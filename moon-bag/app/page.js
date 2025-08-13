@@ -2,7 +2,7 @@
 import Link from "next/link";
 import Description from "./components/Description";
 
-const botUsername = "MoonArchCTbot";
+const botUsername = "tothemooooooon_bot";
 
 export default function Page() {
   return (
@@ -19,7 +19,7 @@ export default function Page() {
             }}
             className="rounded-full bg-black px-8 py-3 text-sm font-medium text-white transition-colors hover:bg-black/90"
           >
-            LAUNCH APP
+            LAUNCH BOT
           </button>
         </header>
 
