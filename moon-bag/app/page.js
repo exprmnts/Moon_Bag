@@ -1,5 +1,8 @@
+"use client";
 import Link from "next/link";
 import Description from "./components/Description";
+
+const botUsername = "MoonArchCTbot";
 
 export default function Page() {
   return (
@@ -10,8 +13,13 @@ export default function Page() {
           <Link href="/" className="text-2xl font-black tracking-tighter">
             MOONBAG EXT
           </Link>
-          <button className="rounded-full bg-black px-8 py-3 text-sm font-medium text-white transition-colors hover:bg-black/90">
-            CONNECT
+          <button
+            onClick={() => {
+              window.open(`https://t.me/${botUsername}`, "_blank");
+            }}
+            className="rounded-full bg-black px-8 py-3 text-sm font-medium text-white transition-colors hover:bg-black/90"
+          >
+            LAUNCH APP
           </button>
         </header>
 
@@ -29,7 +37,11 @@ export default function Page() {
         <section className="flex flex-row items-center justify-between py-8">
           {/* Left Side - Moon Image */}
           <div className="w-1/3">
-            <img src="/assets/moon.jpeg" alt="Moonbag" className="w-full animate-spin [animation-duration:55s]" />
+            <img
+              src="/assets/moon.jpeg"
+              alt="Moonbag"
+              className="w-full animate-spin [animation-duration:55s]"
+            />
           </div>
 
           {/* Right Side - Calculator */}
