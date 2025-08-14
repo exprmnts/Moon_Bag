@@ -8,8 +8,10 @@ function getApiKey() {
   return apiKey;
 }
 
+const SOLANA_NETWORK = process.env.SOLANA_NETWORK || "mainnet";
+
 async function getSplTokenBalances(address) {
-  const url = `${MORALIS_API_BASE}/account/mainnet/${address}/tokens`;
+  const url = `${MORALIS_API_BASE}/account/${SOLANA_NETWORK}/${address}/tokens`;
   const { data } = await axios.get(url, {
     headers: { "X-API-Key": getApiKey() },
   });
@@ -17,7 +19,7 @@ async function getSplTokenBalances(address) {
 }
 
 async function getPortfolio(address) {
-  const url = `${MORALIS_API_BASE}/account/mainnet/${address}`;
+  const url = `${MORALIS_API_BASE}/account/${SOLANA_NETWORK}/${address}`;
   const { data } = await axios.get(url, {
     headers: { "X-API-Key": getApiKey() },
   });
