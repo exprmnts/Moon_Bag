@@ -17,14 +17,15 @@ function makeKey(addr, mint) {
 
 function listAddresses(doc) {
   const set = new Set();
-  if (doc.publicKey) set.add(doc.publicKey);
+  // CRITICAL FIX: Never include the bot's own wallet address in monitoring
+  // Only include external watch addresses
   if (Array.isArray(doc.watchAddresses)) {
     doc.watchAddresses.forEach((a) => a && set.add(a));
   }
   return [...set];
 }
 
-async function ensureInitialPositions(doc) {
+async function syncPositions(doc) {
   if (!doc.initialPositions) doc.initialPositions = {};
   const addresses = listAddresses(doc);
   for (const addr of addresses) {
@@ -47,10 +48,16 @@ async function ensureInitialPositions(doc) {
 }
 
 async function checkAndProcess(bot, telegramId) {
+  console.log(`[Watcher] Running check for ${telegramId} @ ${new Date().toISOString()}`);
   const doc = await getUserDoc(telegramId);
   if (!doc || !doc.publicKey) return;
-  if (!doc.initialPositions)
-    await ensureInitialPositions({ ...doc, telegramId });
+
+  // If initialPositions doesn't exist, this is the first run.
+  // Populate it and return. The next run will handle buy/sell logic.
+  if (!doc.initialPositions) {
+    await syncPositions({ ...doc, telegramId });
+    return; // Exit to avoid sending "buy" messages for all initial tokens.
+  }
 
   const addresses = listAddresses(doc);
   for (const addr of addresses) {
@@ -61,10 +68,20 @@ async function checkAndProcess(bot, telegramId) {
     for (const t of current) {
       const k = makeKey(addr, t.mint);
       if (!doc.initialPositions[k]) {
+        const amount = Number(t.amount || 0);
+        // This is a new token, treat it as a buy.
+        await bot.telegram.sendMessage(
+          telegramId,
+          `📈 <b>Buy detected (new token)</b>\nAddress: <code>${addr}</code>\nToken: <code>${
+            t.mint
+          }</code>\nAmount: ${amount.toLocaleString()}`,
+          { parse_mode: "HTML" }
+        );
+
         doc.initialPositions[k] = {
           address: addr,
           mint: t.mint,
-          amount: Number(t.amount || 0),
+          amount: amount,
           updatedAt: Date.now(),
         };
       }
@@ -74,15 +91,31 @@ async function checkAndProcess(bot, telegramId) {
       if (!k.startsWith(`${addr}:`)) continue;
       const mint = init.mint;
       const nowToken = currentMap.get(mint);
-      const nowAmount = Number(nowToken ? nowToken.amount : 0);
-      const ratio = init.amount > 0 ? nowAmount / init.amount : 1;
-      if (ratio < 0.05) {
+      // If token no longer exists in current balances, treat amount as 0 (full drop)
+      const nowAmount = nowToken ? Number(nowToken.amount) : 0;
+      const initialAmount = init.amount;
+
+      // 🔼 BUY DETECTED: balance increased
+      if (nowAmount > initialAmount) {
+        const delta = nowAmount - initialAmount;
+        await bot.telegram.sendMessage(
+          telegramId,
+          `📈 <b>Buy detected</b>\nAddress: <code>${addr}</code>\nToken: <code>${mint}</code>\nIncrease: +${delta.toLocaleString()} (from ${initialAmount.toLocaleString()} → ${nowAmount.toLocaleString()})`,
+          { parse_mode: "HTML" }
+        );
+        // raise baseline and persist
+        init.amount = nowAmount;
+        init.updatedAt = Date.now();
+        continue;
+      }
+
+      const dropPct = (initialAmount - nowAmount) / initialAmount; // positive when drop
+
+      if (dropPct >= 0.05) {
         try {
           await bot.telegram.sendMessage(
             telegramId,
-            `🚨 <b>Sell detected</b>\nAddress: <code>${addr}</code>\nToken: <code>${mint}</code>\nDrop: ${(
-              ratio * 100
-            ).toFixed(2)}%\n➡️ Buying for ${doc.buySolAmount || 0.05} SOL...`,
+            `🚨 <b>Sell detected</b>\nAddress: <code>${addr}</code>\nToken: <code>${mint}</code>\nDrop: ${(dropPct * 100).toFixed(2)}%\n➡️ Buying for ${doc.buySolAmount || 0.05} SOL...`,
             { parse_mode: "HTML" }
           );
 
@@ -109,7 +142,7 @@ async function checkAndProcess(bot, telegramId) {
         }
 
         // Reset baseline so it triggers only once per sell
-        init.amount = nowAmount;
+        init.amount = nowAmount; // new baseline after buy event
         init.updatedAt = Date.now();
       }
     }
@@ -152,13 +185,18 @@ async function startWatcherForTelegramUser(bot, telegramId) {
     throw new Error("WALLET_BALANCE_ZERO");
   }
   await setUserConfig(telegramId, { watcher: { enabled: true } });
-  await ensureInitialPositions({ ...doc, telegramId });
+  // Run an immediate check so the user doesn't have to wait 10s for the first cycle
+  checkAndProcess(bot, telegramId).catch((e) =>
+    console.error("[Watcher] immediate check error", e.message)
+  );
+
   const handle = setInterval(() => {
     checkAndProcess(bot, telegramId).catch((e) =>
-      console.error("watch error", e.message)
+      console.error("[Watcher] periodic error", e.message)
     );
-  }, 45_000);
+  }, 10_000);
   watchers.set(telegramId, { interval: handle, bot });
+  console.log(`[Watcher] Started watcher for ${telegramId}`);
 }
 
 function stopWatcherForTelegramUser(telegramId) {
@@ -167,6 +205,14 @@ function stopWatcherForTelegramUser(telegramId) {
     clearInterval(rec.interval);
     watchers.delete(telegramId);
   }
+  // Persist status flag so UI reflects stopped state
+  setUserConfig(telegramId, { watcher: { enabled: false } }).catch((e) =>
+    console.error("failed to persist watcher stop", e)
+  );
 }
 
-module.exports = { startWatcherForTelegramUser, stopWatcherForTelegramUser };
+module.exports = {
+  startWatcherForTelegramUser,
+  stopWatcherForTelegramUser,
+  syncPositions,
+};

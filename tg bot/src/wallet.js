@@ -65,10 +65,23 @@ async function addWatchAddress(telegramId, address) {
   return arr;
 }
 
+async function removeWatchAddress(telegramId, address) {
+  const db = getFirestore();
+  const ref = db.collection(USERS_COLLECTION).doc(telegramId);
+  const docSnap = await ref.get();
+  if (!docSnap.exists) throw new Error("No user");
+  const data = docSnap.data();
+  let arr = Array.isArray(data.watchAddresses) ? data.watchAddresses : [];
+  const filteredArr = arr.filter(addr => addr !== address);
+  await ref.set({ watchAddresses: filteredArr }, { merge: true });
+  return filteredArr;
+}
+
 module.exports = {
   createUserWalletIfMissing,
   getUserDoc,
   setUserConfig,
   getDecryptedSecretKeyBytes,
   addWatchAddress,
+  removeWatchAddress,
 };
