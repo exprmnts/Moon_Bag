@@ -8,8 +8,9 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "build": "npm install",
     "dev": "nodemon --env-file=.env src/index.js",
+    "build": "echo 'Build completed - Node.js app ready for deployment'",
+    "postinstall": "echo 'Dependencies installed successfully'",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
@@ -19,5 +20,8 @@
     "dotenv": "^16.4.5",
     "firebase": "^9.23.0",
     "telegraf": "^4.16.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
