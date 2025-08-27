@@ -9,8 +9,8 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon --env-file=.env src/index.js",
-    "build": "echo 'Build completed - Node.js app ready for deployment'",
-    "postinstall": "echo 'Dependencies installed successfully'",
+    "build": "node vercel-build.js",
+    "vercel-build": "node vercel-build.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
