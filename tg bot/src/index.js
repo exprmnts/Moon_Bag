@@ -11,6 +11,7 @@ const {
   stopWatcherForTelegramUser,
 } = require("./watcher");
 const { initFirebase } = require("./services/firebase");
+require("./httpKeepAlive"); // Keep the bot alive for render hosting webservice
 
 // Initialize Firebase Admin SDK
 initFirebase();
