@@ -3,6 +3,107 @@
 @tailwind utilities;
 
 :root {
-  --background: 0 0% 100%;
-  --foreground: 0 0% 0%;
+  color-scheme: light only;
+}
+
+html,
+body {
+  background: #fff;
+  color: #000;
+}
+
+html,
+body {
+  /* A deck, not a document: the page itself never scrolls. */
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-optical-sizing: auto;
+}
+
+::selection {
+  background: #000;
+  color: #fff;
+}
+
+/* Custom cursor is only mounted on fine pointers; hide the native one then. */
+@media (pointer: fine) {
+  html.has-cursor,
+  html.has-cursor * {
+    cursor: none !important;
+  }
+}
+
+/* Type scale — one place to tune the big, readable sizes. */
+@layer components {
+  .t-hero {
+    font-size: clamp(3rem, 9.5vw, 9rem);
+    line-height: 0.92;
+    letter-spacing: -0.02em;
+  }
+  .t-xl {
+    font-size: clamp(2rem, 5vw, 4.6rem);
+    line-height: 1.02;
+    letter-spacing: -0.01em;
+  }
+  .t-lg {
+    font-size: clamp(1.5rem, 3.2vw, 2.9rem);
+    line-height: 1.12;
+  }
+  .t-md {
+    font-size: clamp(1.25rem, 2.3vw, 2.05rem);
+    line-height: 1.25;
+  }
+  .t-sm {
+    font-size: clamp(1.05rem, 1.7vw, 1.45rem);
+    line-height: 1.35;
+  }
+  .t-label {
+    font-family: theme(fontFamily.mono);
+    font-size: clamp(0.65rem, 0.9vw, 0.8rem);
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+  }
+}
+
+/* Idle "breathing" brackets on the CTA. */
+@keyframes bracket-l {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(-0.18em); }
+}
+@keyframes bracket-r {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(0.18em); }
+}
+.bracket-l { animation: bracket-l 2.6s ease-in-out infinite; }
+.bracket-r { animation: bracket-r 2.6s ease-in-out infinite; }
+.group:hover .bracket-l,
+.group:hover .bracket-r {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bracket-l,
+  .bracket-r {
+    animation: none;
+  }
+}
+
+/* Scroll cue on the first slide. */
+@keyframes cue-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(0.4em); }
+}
+.scroll-cue {
+  display: inline-block;
+  animation: cue-bob 1.8s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .scroll-cue { animation: none; }
 }

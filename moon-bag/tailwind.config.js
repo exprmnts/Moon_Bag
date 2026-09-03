@@ -1,17 +1,19 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  content: [
-    "./pages/**/*.{js,ts,jsx,tsx,mdx}",
-    "./components/**/*.{js,ts,jsx,tsx,mdx}",
-    "./app/**/*.{js,ts,jsx,tsx,mdx}",
-  ],
+  content: ["./app/**/*.{js,jsx,mdx}"],
   theme: {
-    extend: {
-      colors: {
-        background: "var(--background)",
-        foreground: "var(--foreground)",
-      },
+    // Strict monochrome: no other color utilities exist in this project.
+    colors: {
+      transparent: "transparent",
+      current: "currentColor",
+      black: "#000",
+      white: "#fff",
     },
+    fontFamily: {
+      serif: ["var(--font-newsreader)", "Times New Roman", "Times", "serif"],
+      mono: ["var(--font-geist-mono)", "ui-monospace", "Menlo", "monospace"],
+    },
+    extend: {},
   },
   plugins: [],
 };

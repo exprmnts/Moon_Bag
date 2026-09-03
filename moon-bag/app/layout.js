@@ -1,11 +1,18 @@
+import { Newsreader } from "next/font/google";
 import localFont from "next/font/local";
 import "./globals.css";
 
-const geistSans = localFont({
-  src: "./fonts/GeistVF.woff",
-  variable: "--font-geist-sans",
-  weight: "100 900",
+const newsreader = Newsreader({
+  subsets: ["latin"],
+  style: ["normal", "italic"],
+  axes: ["opsz"],
+  variable: "--font-newsreader",
+  display: "swap",
+  fallback: ["Times New Roman", "Times", "serif"],
+  // Next has no metric table for Newsreader; skip the automatic fallback tuning.
+  adjustFontFallback: false,
 });
+
 const geistMono = localFont({
   src: "./fonts/GeistMonoVF.woff",
   variable: "--font-geist-mono",
@@ -13,18 +20,14 @@ const geistMono = localFont({
 });
 
 export const metadata = {
-  title: "MoonBag EXT",
-  description: "A Trading Module That Will Always Leave A Moonbag For You.",
+  title: "MOONBAG",
+  description: "Did you leave a moonbag?",
 };
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        {children}
-      </body>
+    <html lang="en" className={`${newsreader.variable} ${geistMono.variable}`}>
+      <body className="bg-white font-serif text-black antialiased">{children}</body>
     </html>
   );
 }
