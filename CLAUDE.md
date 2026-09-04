@@ -1,9 +1,11 @@
 # Moon_Bag
 
+**Active plan:** `ROADMAP.md` is the build plan for moving the bot from Solana to Robinhood Chain (MVP, feature parity, Neon Postgres). Read it before touching `bot/`. Decisions in it are settled; do not reopen them.
+
 Two projects live here:
 
 - `moon-bag/` — the website. Next.js 14 (app router, JavaScript), Tailwind, `motion`. It is a full-screen slide deck of the pitch, not a scrolling page. See `moon-bag/docs/DESIGN.md` for the design system and the deck mechanics.
-- `tg bot/` — the Moonbag Telegram bot (Telegraf, Solana web3, Firebase). Needs a `.env` with the keys listed in its README before it will start. Not touched by the website work.
+- `bot/` — the Moonbag Telegram bot (Telegraf, Solana web3, Firebase). Needs a `.env` with the keys listed in its README before it will start. Not touched by the website work.
 
 ## Working on the website
 
