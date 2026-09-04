@@ -71,13 +71,15 @@ async function getTokenBalances(address) {
   return out;
 }
 
-const metaCache = new Map(); // address -> { symbol, decimals }
+const metaCache = new Map(); // address -> { symbol, decimals, until? }
+const META_RETRY_MS = 10 * 60_000; // how long a failed metadata read is remembered
 
 // Symbol and decimals for a token, cached in memory and in the tokens table.
 // Falls back to { symbol: null, decimals: null } for tokens that refuse to answer.
 async function getTokenMeta(tokenAddress) {
   const address = tokenAddress.toLowerCase();
-  if (metaCache.has(address)) return metaCache.get(address);
+  const cached = metaCache.get(address);
+  if (cached && (!cached.until || cached.until > Date.now())) return cached;
 
   const row = await db.one("select symbol, decimals from tokens where address = $1", [address]);
   if (row && row.symbol != null && row.decimals != null) {
@@ -102,7 +104,9 @@ async function getTokenMeta(tokenAddress) {
     return meta;
   } catch (err) {
     console.warn(`[alchemy] token metadata failed for ${address}: ${err.shortMessage || err.message}`);
-    return { symbol: null, decimals: null };
+    const miss = { symbol: null, decimals: null, until: Date.now() + META_RETRY_MS };
+    metaCache.set(address, miss);
+    return miss;
   }
 }
 
