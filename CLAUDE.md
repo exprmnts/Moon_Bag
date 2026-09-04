@@ -1,9 +1,29 @@
 # Moon_Bag
 
+**Status (2026-09-04):** the bot has been ported from Solana to Robinhood Chain per `ROADMAP.md` (Phases 0–6 prep done, see the Status block at the top of that file). The port is verified on testnet end to end; the mainnet swap, the Railway deploy and the secret rotation are the remaining steps. `ROADMAP.md` decisions are settled; do not reopen them. New product ideas go in its "Later" list.
+
 Two projects live here:
 
 - `moon-bag/` — the website. Next.js 14 (app router, JavaScript), Tailwind, `motion`. It is a full-screen slide deck of the pitch, not a scrolling page. See `moon-bag/docs/DESIGN.md` for the design system and the deck mechanics.
-- `tg bot/` — the Moonbag Telegram bot (Telegraf, Solana web3, Firebase). Needs a `.env` with the keys listed in its README before it will start. Not touched by the website work.
+- `bot/` — the Moonbag Telegram bot on Robinhood Chain (Telegraf 4, viem, Neon Postgres via `pg`, Uniswap Trading API). JavaScript, CommonJS, Node 22. Needs `bot/.env` (copy `.env.example`; see `ROADMAP.md` for where each value comes from). Not touched by the website work.
+
+## Working on the bot
+
+```bash
+cd bot
+npm install
+npm run dev              # nodemon; CHAIN=testnet DRY_RUN=true from .env
+npm test                 # node --test (decide() only)
+node scripts/smoke.js <telegram_id>
+curl localhost:3000/health
+```
+
+- Only one bot process at a time (Telegram long-polling). Stop a local run before Railway takes over, and vice versa.
+- `CHAIN` selects Alchemy RPC/WSS, explorer and chain id; `DRY_RUN=true` is a real branch in `executor.buy`. Uniswap exists only on mainnet 4663.
+- Amounts are `bigint` in code and `numeric` in Postgres. Never `Number()` a wei value.
+- `schema.sql` is idempotent and runs at every boot; there is no migration tool. Add columns with `alter table … add column if not exists`.
+- Deploy: Railway service from `bot/` with the Dockerfile (see `bot/README.md`). Neon `main` branch for Railway, `dev` for the laptop.
+- Testing: `npm test` for the pure rule. Everything else was verified with throwaway harnesses that stub `Telegram.prototype.callApi` and drive `bot.handleUpdate` with fake updates against the real Neon `dev` branch and Alchemy testnet; `index.js` exports `{ bot }` and only boots when run directly, so a harness can require it. On-chain loops use a throwaway operator wallet funded with testnet ETH (gas is ~0.01 gwei, so 0.0001 ETH covers ~180 transfers). The real testnet WETH wrapper (has `deposit()`) is `0x33e4191705c386532ba27cbf171db86919200b94`.
 
 ## Working on the website
 
@@ -50,4 +70,4 @@ Lint and build, then look at it in a real browser at three widths: a 390px phone
 
 ## Git
 
-Work on a branch, push, and merge to `main`. Do not commit `tg bot/package-lock.json` churn from running `npm install`.
+Work on a branch, push, and merge to `main` (that deploys the site on Vercel; Railway deploys the bot from its own branch setting). Commit `bot/package-lock.json` only when dependencies actually change.

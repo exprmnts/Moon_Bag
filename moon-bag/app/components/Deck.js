@@ -3,6 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { AnimatePresence, motion } from "motion/react";
 import Cursor from "./Cursor";
 import { SLIDES } from "./slides";
+import { BOT_URL } from "../site";
 import { EASE_OUT, stageFor } from "./variants";
 
 const pad = (n) => String(n).padStart(2, "0");
@@ -216,7 +217,16 @@ export default function Deck() {
         transition={{ type: "spring", stiffness: 110, damping: 22 }}
       />
 
-      <header className="t-label pointer-events-none fixed inset-x-0 top-0 z-30 flex justify-end px-5 py-5 sm:px-8 sm:py-6">
+      <header className="t-label pointer-events-none fixed inset-x-0 top-0 z-30 flex items-baseline justify-between px-5 py-5 sm:px-8 sm:py-6">
+        <a
+          href={BOT_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          data-cursor
+          className="pointer-events-auto"
+        >
+          Open Moonbag Bot ↗
+        </a>
         <AnimatePresence initial={false}>
           {visibleIndex >= 0 && (
             <motion.div
