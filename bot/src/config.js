@@ -32,9 +32,11 @@ const config = {
   explorerTx: IS_MAINNET
     ? "https://robinhoodchain.blockscout.com/tx/"
     : "https://explorer.testnet.chain.robinhood.com/tx/",
+  // Reference only; buys use native ETH. Testnet: the wrapper with deposit()
+  // (0x7943…52Fa from the roadmap is a different WETH-named token).
   weth: IS_MAINNET
     ? "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"
-    : "0x7943e237c7F95DA44E0301572D358911207852Fa",
+    : "0x33e4191705c386532ba27cbf171db86919200b94",
 
   telegramToken: required("TELEGRAM_BOT_TOKEN"),
   databaseUrl: required("DATABASE_URL"),
