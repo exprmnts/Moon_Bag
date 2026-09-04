@@ -1,7 +1,7 @@
 "use client";
 import { motion } from "motion/react";
 import { group, line } from "./variants";
-import BracketButton from "./BracketButton";
+import PillButton from "./PillButton";
 import Chart from "./Chart";
 import FAQ from "./FAQ";
 
@@ -32,26 +32,19 @@ const Column = ({ children }) => (
   <div className="mx-auto w-full max-w-3xl">{children}</div>
 );
 
-/* 1 ─ Did you leave a moonbag? (centred italic, the mark covers both lines) */
+/* 1 ─ Did you leave a moonbag? (homepage variation 02: centred, italic, pill) */
 function Hero({ onCta }) {
   return (
-    <div className="flex flex-col items-center gap-10 text-center sm:gap-12">
-      <motion.h1
-        variants={group(0.08)}
-        className="t-hero-it flex items-center justify-center gap-[0.08em]"
-      >
-        <span className="block">
-          <Words as="span" text="Did you leave" className="block whitespace-nowrap" stagger={0.08} />
-          <Words as="span" text="a moonbag" className="block whitespace-nowrap" stagger={0.08} />
-        </span>
-        <motion.span variants={line} aria-hidden className="t-mark">
-          ?
-        </motion.span>
-        <span className="sr-only">?</span>
+    <div className="flex flex-col items-center gap-[2.6rem] text-center">
+      <motion.h1 variants={group(0.08)} className="t-hero-it mx-auto max-w-[13ch]">
+        <Words as="span" text="Did you leave" className="block" stagger={0.08} />
+        <Words as="span" text="a moonbag?" className="block" stagger={0.08} />
       </motion.h1>
-      <P className="t-md">
-        Click here for paperhand calculator →{" "}
-        <BracketButton onClick={onCta}>Button</BracketButton>
+      <P className="t-hero-cta">
+        {/* Phones get the short form so the headline stays the loud one. */}
+        <span className="hidden sm:inline">Click here for paperhand calculator →</span>
+        <span className="sm:hidden">Paperhand calculator →</span>{" "}
+        <PillButton onClick={onCta}>Button</PillButton>
       </P>
     </div>
   );

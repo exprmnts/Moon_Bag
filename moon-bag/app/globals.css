@@ -47,19 +47,21 @@ body {
     line-height: 0.92;
     letter-spacing: -0.02em;
   }
+  /* Hero: homepage variation 02. Centred italic light; phones fill the width. */
   .t-hero-it {
-    font-size: clamp(2.4rem, 7vw, 6.6rem);
+    font-size: clamp(3rem, 16vw, 4.6rem);
     line-height: 0.98;
     letter-spacing: -0.015em;
     font-style: italic;
     font-weight: 300;
   }
-  .t-mark {
-    font-size: 2.72em;
-    line-height: 0.8;
-    font-style: normal;
-    font-weight: 300;
-    display: inline-block;
+  .t-hero-cta {
+    font-size: clamp(1rem, 4.2vw, 1.15rem);
+    line-height: 1.2;
+  }
+  @media (min-width: 640px) {
+    .t-hero-it { font-size: clamp(2.8rem, 8.4vw, 7.8rem); }
+    .t-hero-cta { font-size: clamp(1.15rem, 1.9vw, 1.75rem); }
   }
   .t-xl {
     font-size: clamp(2rem, 5vw, 4.6rem);
@@ -83,29 +85,6 @@ body {
     font-size: clamp(0.65rem, 0.9vw, 0.8rem);
     letter-spacing: 0.22em;
     text-transform: uppercase;
-  }
-}
-
-/* Idle "breathing" brackets on the CTA. */
-@keyframes bracket-l {
-  0%, 100% { transform: translateX(0); }
-  50% { transform: translateX(-0.18em); }
-}
-@keyframes bracket-r {
-  0%, 100% { transform: translateX(0); }
-  50% { transform: translateX(0.18em); }
-}
-.bracket-l { animation: bracket-l 2.6s ease-in-out infinite; }
-.bracket-r { animation: bracket-r 2.6s ease-in-out infinite; }
-.group:hover .bracket-l,
-.group:hover .bracket-r {
-  animation: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .bracket-l,
-  .bracket-r {
-    animation: none;
   }
 }
 
