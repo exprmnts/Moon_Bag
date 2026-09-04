@@ -85,6 +85,17 @@ The page never scrolls; input turns pages.
 
 Type is `clamp()` everywhere; the hero has an explicit phone tier under 640px. Tested widths: 360, 390, 430 (phones), 768 (tablet), 1000×540 (laptop with chrome) and 1440×900. The check is: no horizontal overflow, every slide fits without `Fit` having to scale below about 0.9, and one gesture turns one page.
 
-## 10. Design history (for context, not in the repo)
+## 10. Logo, favicon and share image
+
+**The mark** is a hand-drawn crescent, solid ink, horns up-right. It was generated once from the brand kit's `moon.py` (two circles, a seeded low-frequency wobble, one horn a little longer than the other) and frozen. By choice it does not appear in the deck's chrome: the pages stay type-only, and the mark lives in the favicon, the app icons and the share images. Do not redraw it by hand or replace it with a font glyph or an emoji; the wobble is the logo.
+
+- `app/icon.svg` and `app/favicon.ico` (16/32/48): the mark reversed white on a black disc, so it survives light and dark tab bars.
+- `app/apple-icon.png` (180) and `public/icons/icon-192.png`, `icon-512.png` (manifest): the same, on a black square.
+- `app/opengraph-image.png` (1200×630) and `app/twitter-image.png` (1200×600): the homepage as a still — the mark, the `01 / 07` counter, the two-line italic headline, `MOONBAG` and `$MOON` in mono at the foot. Regenerate from the brand kit rather than editing the PNGs.
+- Everything else (wordmark, lockups, social sizes, the fonts, the guidelines PDF) lives in the brand kit folder handed to the design team, not in the repo.
+
+Metadata (`app/layout.js`, constants in `app/site.js`): title `Moonbag — Did you leave a moonbag?`, a one-sentence description, Open Graph and Twitter `summary_large_image` tags, robots, canonical, JSON-LD (`WebSite` + `SoftwareApplication`). `app/manifest.js`, `app/robots.js` and `app/sitemap.js` are file conventions. Absolute URLs come from `NEXT_PUBLIC_SITE_URL`, falling back to the Vercel URL.
+
+## 11. Design history (for context, not in the repo)
 
 The `design-experiments/` folder, git-ignored, holds the studies that led here: five handwriting/paper themes (rejected), ten homepage layouts in Newsreader (variation 02 chosen), fifteen giant-question-mark mixes and three placements (tried on the live site, then reverted in favour of 02). If a future change wants the big question mark back, placement 02 of `moonbag-question-placement.html` is the version that was liked.
