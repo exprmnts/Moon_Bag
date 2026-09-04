@@ -32,17 +32,24 @@ const Column = ({ children }) => (
   <div className="mx-auto w-full max-w-3xl">{children}</div>
 );
 
-/* 1 ─ DID YOU LEAVE A MOONBAG? */
+/* 1 ─ Did you leave a moonbag? (centred italic, the mark covers both lines) */
 function Hero({ onCta }) {
   return (
-    <div className="flex min-h-[55svh] flex-col justify-between gap-16">
-      <Words
-        as="h1"
-        text="DID YOU LEAVE A MOONBAG?"
-        className="t-hero max-w-[12ch] font-normal uppercase"
-        stagger={0.08}
-      />
-      <P className="t-md self-end text-right">
+    <div className="flex flex-col items-center gap-10 text-center sm:gap-12">
+      <motion.h1
+        variants={group(0.08)}
+        className="t-hero-it flex items-center justify-center gap-[0.08em]"
+      >
+        <span className="block">
+          <Words as="span" text="Did you leave" className="block whitespace-nowrap" stagger={0.08} />
+          <Words as="span" text="a moonbag" className="block whitespace-nowrap" stagger={0.08} />
+        </span>
+        <motion.span variants={line} aria-hidden className="t-mark">
+          ?
+        </motion.span>
+        <span className="sr-only">?</span>
+      </motion.h1>
+      <P className="t-md">
         Click here for paperhand calculator →{" "}
         <BracketButton onClick={onCta}>Button</BracketButton>
       </P>
