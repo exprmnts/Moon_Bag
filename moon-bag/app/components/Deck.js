@@ -98,7 +98,15 @@ export default function Deck() {
     },
     [total]
   );
-  const step = useCallback((dir) => go(indexRef.current + dir, dir), [go]);
+  // Stepping skips hidden slides; go() can still reach them directly.
+  const step = useCallback(
+    (dir) => {
+      let n = indexRef.current + dir;
+      while (n >= 0 && n < total && SLIDES[n].hidden) n += dir;
+      return go(n, dir);
+    },
+    [go, total]
+  );
 
   useEffect(() => {
     // Wheel / trackpad: the first nudge turns the page, the momentum tail is
@@ -193,6 +201,9 @@ export default function Deck() {
 
   const Slide = SLIDES[index].component;
   const last = index === total - 1;
+  const visible = SLIDES.map((s, i) => i).filter((i) => !SLIDES[i].hidden);
+  const visibleIndex = visible.indexOf(index); // -1 while on a hidden slide
+  const progressIndex = visibleIndex >= 0 ? visibleIndex : visible.filter((i) => i < index).length - 1;
 
   return (
     <>
@@ -201,12 +212,24 @@ export default function Deck() {
       <motion.div
         aria-hidden
         className="fixed left-0 top-0 z-40 h-[2px] bg-black"
-        animate={{ width: `${((index + 1) / total) * 100}%` }}
+        animate={{ width: `${((progressIndex + 1) / visible.length) * 100}%` }}
         transition={{ type: "spring", stiffness: 110, damping: 22 }}
       />
 
       <header className="t-label pointer-events-none fixed inset-x-0 top-0 z-30 flex justify-end px-5 py-5 sm:px-8 sm:py-6">
-        <Counter index={index} total={total} />
+        <AnimatePresence initial={false}>
+          {visibleIndex >= 0 && (
+            <motion.div
+              key="counter"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              <Counter index={visibleIndex} total={visible.length} />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </header>
 
       <main
@@ -223,7 +246,7 @@ export default function Deck() {
             className="h-[100svh] w-full px-5 py-16 sm:px-8 sm:py-20"
           >
             <Fit>
-              <Slide onCta={() => step(1)} />
+              <Slide onCta={() => go(index + 1, 1)} />
             </Fit>
           </motion.section>
         </AnimatePresence>

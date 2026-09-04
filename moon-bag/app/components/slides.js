@@ -192,7 +192,8 @@ function Faq() {
 
 export const SLIDES = [
   { id: "hero", component: Hero },
-  { id: "joke", component: Joke },
+  // Hidden: never reached by scrolling, only revealed by the hero button.
+  { id: "joke", component: Joke, hidden: true },
   { id: "research", component: Research },
   { id: "definition", component: Definition },
   { id: "token", component: Token },
