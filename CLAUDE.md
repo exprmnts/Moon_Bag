@@ -1,0 +1,50 @@
+# Moon_Bag
+
+Two projects live here:
+
+- `moon-bag/` — the website. Next.js 14 (app router, JavaScript), Tailwind, `motion`. It is a full-screen slide deck of the pitch, not a scrolling page. See `moon-bag/docs/DESIGN.md` for the design system and the deck mechanics.
+- `tg bot/` — the Moonbag Telegram bot (Telegraf, Solana web3, Firebase). Needs a `.env` with the keys listed in its README before it will start. Not touched by the website work.
+
+## Working on the website
+
+```bash
+cd moon-bag
+npm install
+npm run dev -- -p 3001   # port 3000 is often taken by another project on this machine
+npm run lint
+npm run build            # must pass before pushing
+```
+
+Rules that are easy to break by accident:
+
+- **Black and white only.** `tailwind.config.js` deletes every colour except `black`, `white`, `transparent` and `current`. Do not add greys, tints, or opacity-as-grey. Hairlines are 1px black.
+- **One serif, one mono.** Newsreader (Google, variable, italic + optical size) for everything readable; Geist Mono (local) only for tiny chrome: the counter, labels, the scroll cue. Do not introduce a third face.
+- **Copy is the deck's copy.** Slides carry the pitch deck's words. Slide 4 was tightened with the owner's permission; every other slide is verbatim, typos included ("intetion" was fixed only on slide 4).
+- **Every slide must fit the screen.** The page itself never scrolls (`html, body { overflow: hidden }`). A slide that is taller than the viewport is scaled down by the `Fit` wrapper in `Deck.js`, so never rely on scrolling inside a slide.
+- **Slide 2 is hidden.** "Nah we won't do that to you" is reached only by the hero button. Stepping (wheel, tap, keys) skips it. Keep `hidden: true` on it in `SLIDES`.
+
+## Where things are
+
+| What | File |
+| --- | --- |
+| Slide order, hidden flag, every slide's JSX | `moon-bag/app/components/slides.js` |
+| Navigation, counter, fit-to-screen, deep links | `moon-bag/app/components/Deck.js` |
+| Enter/exit transition and line reveal variants | `moon-bag/app/components/variants.js` |
+| Type scale (`.t-hero-it`, `.t-xl`, `.t-lg`, `.t-md`, `.t-sm`, `.t-label`) | `moon-bag/app/globals.css` |
+| Fonts and metadata | `moon-bag/app/layout.js` |
+| Chart on slide 3 (SVG, draws itself) | `moon-bag/app/components/Chart.js` |
+| FAQ accordion (marked `data-no-advance`) | `moon-bag/app/components/FAQ.js` |
+| Pencil cursor (fine pointers only) | `moon-bag/app/components/Cursor.js` |
+| Hero CTA pill button | `moon-bag/app/components/PillButton.js` |
+
+## Verifying a change
+
+Lint and build, then look at it in a real browser at three widths: a 390px phone, a 1000×540 laptop window with browser chrome, and 1440×900. Check there is no horizontal overflow and that a single wheel nudge, a tap, and a swipe each turn exactly one page. The deck has been verified this way with headless Chrome driven over the DevTools protocol; a plain browser works too.
+
+## Not in the repo
+
+`design-experiments/` holds the HTML mock-ups used to choose the homepage (theme experiments, ten homepage layouts, question-mark studies). It is git-ignored on purpose. The chosen direction is documented in `moon-bag/docs/DESIGN.md`.
+
+## Git
+
+Work on a branch, push, and merge to `main`. Do not commit `tg bot/package-lock.json` churn from running `npm install`.
