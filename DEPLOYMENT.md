@@ -42,7 +42,7 @@ Testnet facts: chain id 46630, RPC `https://rpc.testnet.chain.robinhood.com`, ex
 
 ### Manual test loop (testnet)
 
-Two wallets you control: A (watched) and B (anywhere). Wrap a little ETH to WETH in A. In Telegram: `/start` → Create Wallet → send a little testnet ETH to that address (Start Watching refuses a wallet with 0 ETH) → Add Watch Address (A) → Start Watching. Send ≥5% of A's WETH to B: expect "Sell detected" then "Would buy WETH for 0.005 ETH (dry run)" within seconds. Send some back: expect "Buy detected". Restart the bot: Watch Addresses still says Active and nothing re-triggers.
+Two wallets you control: A (watched) and B (anywhere). Wrap a little ETH to WETH in A. In Telegram: `/start` → Create Wallet → send a little testnet ETH to that address (Enable Moonbags refuses a wallet with 0 ETH) → Add Trading Wallet (A) → Enable Moonbags. Send ≥5% of A's WETH to B: expect "Sell detected" then "Would buy WETH for 0.005 ETH (dry run)" within seconds. Send some back: expect "Buy detected". Restart the bot: Trading Wallets still shows Moonbags Enabled and nothing re-triggers.
 
 ### Automated testing
 
@@ -69,9 +69,9 @@ Do these in order. The first three are the ones people forget.
 4. Deploy. Logs must show, in order: `[boot] schema ok; chain=mainnet`, `[http] listening`, `[boot] @mooonbagbot is polling`, `[watcher] resumed N watcher(s)`.
 5. Open `<service-url>/health`: expect `{"ok":true,"chain":"mainnet",...}`.
 6. In Telegram: `/start`, Create Wallet. This is a **new** wallet in the new database; fund this address.
-7. Watch a wallet that trades Pons tokens, Start Watching, wait for a real sell: expect "Sell detected" and "Would buy".
+7. Add a trading wallet that trades Pons tokens, Enable Moonbags, wait for a real sell: expect "Sell detected" and "Would buy".
 8. Flip `DRY_RUN=false` in Railway (redeploys). Set buy amount to 0.001, fund the bot wallet with ~0.01 ETH, sell 10% of a graduated Pons token from the watched wallet: expect "Auto-buy complete" with a Blockscout link and a `confirmed` row in `trades`.
-9. Restart the deployment once. Watch Addresses must still say Active without pressing Start.
+9. Restart the deployment once. Trading Wallets must still show Moonbags Enabled without pressing Enable again.
 
 Rollback: Railway → Deployments → redeploy the previous one. The schema is additive (`create table if not exists`), so older code runs against a newer database.
 

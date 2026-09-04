@@ -116,7 +116,7 @@ async function checkAddress(bot, telegramId, watchedWallet, { blockNumber } = {}
       const ethText = formatEther(user.buyAmountWei);
       await send(
         telegramId,
-        `🚨 <b>Sell detected</b>\n${head}\nDrop: ${(d.dropPct * 100).toFixed(2)}%\n➡️ Buying for ${ethText} ETH...`
+        `🚨 <b>Sell detected</b>\n${head}\nDrop: ${(d.dropPct * 100).toFixed(2)}%\n➡️ Buying your moonbag for ${ethText} ETH...`
       );
       if (block == null) block = await alchemy.publicClient().getBlockNumber();
       const sellKey = `${addr}:${token}:${block}`;
@@ -244,7 +244,7 @@ async function startWatcher(bot, telegramId) {
   if (eth === 0n) {
     await send(
       telegramId,
-      `⚠️ Your bot wallet has 0 ETH. Please top-up the wallet to cover swap fees before starting the watcher.\n\n<code>${user.address}</code>`
+      `⚠️ Your bot wallet has 0 ETH. Please top-up the wallet to cover swap fees before enabling moonbags.\n\n<code>${user.address}</code>`
     );
     throw new Error("WALLET_BALANCE_ZERO");
   }
