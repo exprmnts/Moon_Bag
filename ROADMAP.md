@@ -1,5 +1,15 @@
 # Moonbag MVP roadmap — Solana → Robinhood Chain
 
+## Status (2026-09-04, end of build session)
+
+Done, on branch `robinhood-mvp` merged to `main`: Phase 0 (rename, deps, both spikes pass), Phase 1 (Neon ledger, wallet, `decide()` + test), Phase 2 (all twelve buttons, conversation state in Postgres, `${value}` bug fixed), Phase 3 (WSS + 60 s poll watcher, per-wallet lock, resume on boot, `scripts/smoke.js`), Phase 4 (Trading API executor with `trades` dedupe, in-flight guard and `DRY_RUN`), Phase 5 (site header link + FAQ pill, verified at 390/1440), Phase 6 prep (node:22 Dockerfile with `/health`, README, CLAUDE.md).
+
+Verified: unit test; a harness driving every handler through Telegraf against Neon `dev` + Alchemy testnet (35 checks); a live testnet loop with real transfers (sell 10% → "Sell detected" + dry-run buy in ~4 s after the block, buy-back → "Buy detected", 2% ignored, second sell re-triggers, restart resumes); the same loop against the running bot and the owner's real Telegram account; mainnet `/quote` + `/swap` return 200 (nothing sent).
+
+Remaining (owner): mainnet swap test (`CHAIN=mainnet`, `DRY_RUN=false`, buy 0.001, ~0.02 ETH), Railway service, rotate the bot token and Neon password, then observe.
+
+Known behaviours to decide on before launch: a failed buy keeps its baseline and retries on every check (a message a minute while the wallet is unfunded); the high-amount warning fires above 1 ETH; there is no minimum position value, so dust tokens trigger buys too.
+
 Written 2026-09-04 for the next Claude Code session. Read this whole file, then `CLAUDE.md`, then `tg bot/src/*` once, then start at Phase 0. Do not widen scope. The owner (Nikhil) has **5 hours** and wants a working MVP on Railway tonight.
 
 ## What we are building
@@ -237,3 +247,13 @@ Mainnet test: same loop with `CHAIN=mainnet`, `DRY_RUN=false`, a Pons token in A
 ## Later (explicitly not tonight)
 
 Fees to a treasury, $MOON holder gate, target ladders and selling, subscriptions, Privy server wallets, Alchemy Address Activity webhooks, hood.fun curve adapter, TypeScript, Drizzle migrations, a second replica, gas sponsorship.
+
+Suggested after the test session (priority order):
+1. Cap retries at three per sell, then one "paused, top up and press Start" message.
+2. Check the bot wallet holds buy amount + gas before quoting; skip with a clear message.
+3. The sell side (the site's promise): per token, a target multiple and a moonbag percentage; hold until the target, sell the rest, keep the percentage. Needs price data (Trading API quote) and ERC-20 approvals.
+4. Minimum position value in ETH so dust tokens do not trigger buys.
+5. "My Moonbags" button listing what the bot bought, from `trades`, with Blockscout links.
+6. Bridge link with the bot address prefilled in the Create Wallet message.
+7. Detect "watching your own bot wallet" at add time and say so.
+8. Watch-only mode: alerts without buying.

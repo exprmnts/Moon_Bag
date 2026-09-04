@@ -1,6 +1,6 @@
 # Moon_Bag
 
-**Active plan:** `ROADMAP.md` is the build plan for moving the bot from Solana to Robinhood Chain (MVP, feature parity, Neon Postgres). Read it before touching `bot/`. Decisions in it are settled; do not reopen them.
+**Status (2026-09-04):** the bot has been ported from Solana to Robinhood Chain per `ROADMAP.md` (Phases 0–6 prep done, see the Status block at the top of that file). The port is verified on testnet end to end; the mainnet swap, the Railway deploy and the secret rotation are the remaining steps. `ROADMAP.md` decisions are settled; do not reopen them. New product ideas go in its "Later" list.
 
 Two projects live here:
 
@@ -23,6 +23,7 @@ curl localhost:3000/health
 - Amounts are `bigint` in code and `numeric` in Postgres. Never `Number()` a wei value.
 - `schema.sql` is idempotent and runs at every boot; there is no migration tool. Add columns with `alter table … add column if not exists`.
 - Deploy: Railway service from `bot/` with the Dockerfile (see `bot/README.md`). Neon `main` branch for Railway, `dev` for the laptop.
+- Testing: `npm test` for the pure rule. Everything else was verified with throwaway harnesses that stub `Telegram.prototype.callApi` and drive `bot.handleUpdate` with fake updates against the real Neon `dev` branch and Alchemy testnet; `index.js` exports `{ bot }` and only boots when run directly, so a harness can require it. On-chain loops use a throwaway operator wallet funded with testnet ETH (gas is ~0.01 gwei, so 0.0001 ETH covers ~180 transfers). The real testnet WETH wrapper (has `deposit()`) is `0x33e4191705c386532ba27cbf171db86919200b94`.
 
 ## Working on the website
 
