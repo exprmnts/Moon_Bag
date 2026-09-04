@@ -3,6 +3,100 @@
 @tailwind utilities;
 
 :root {
-  --background: 0 0% 100%;
-  --foreground: 0 0% 0%;
+  color-scheme: light only;
+}
+
+html,
+body {
+  background: #fff;
+  color: #000;
+}
+
+html,
+body {
+  /* A deck, not a document: the page itself never scrolls. */
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-optical-sizing: auto;
+}
+
+::selection {
+  background: #000;
+  color: #fff;
+}
+
+/* Custom cursor is only mounted on fine pointers; hide the native one then. */
+@media (pointer: fine) {
+  html.has-cursor,
+  html.has-cursor * {
+    cursor: none !important;
+  }
+}
+
+/* Type scale — one place to tune the big, readable sizes. */
+@layer components {
+  .t-hero {
+    font-size: clamp(3rem, 9.5vw, 9rem);
+    line-height: 0.92;
+    letter-spacing: -0.02em;
+  }
+  /* Hero: homepage variation 02. Centred italic light; phones fill the width. */
+  .t-hero-it {
+    font-size: clamp(3rem, 16vw, 4.6rem);
+    line-height: 0.98;
+    letter-spacing: -0.015em;
+    font-style: italic;
+    font-weight: 300;
+  }
+  .t-hero-cta {
+    font-size: clamp(1rem, 4.2vw, 1.15rem);
+    line-height: 1.2;
+  }
+  @media (min-width: 640px) {
+    .t-hero-it { font-size: clamp(2.8rem, 8.4vw, 7.8rem); }
+    .t-hero-cta { font-size: clamp(1.15rem, 1.9vw, 1.75rem); }
+  }
+  .t-xl {
+    font-size: clamp(2rem, 5vw, 4.6rem);
+    line-height: 1.02;
+    letter-spacing: -0.01em;
+  }
+  .t-lg {
+    font-size: clamp(1.5rem, 3.2vw, 2.9rem);
+    line-height: 1.12;
+  }
+  .t-md {
+    font-size: clamp(1.25rem, 2.3vw, 2.05rem);
+    line-height: 1.25;
+  }
+  .t-sm {
+    font-size: clamp(1.05rem, 1.7vw, 1.45rem);
+    line-height: 1.35;
+  }
+  .t-label {
+    font-family: theme(fontFamily.mono);
+    font-size: clamp(0.65rem, 0.9vw, 0.8rem);
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+  }
+}
+
+/* Scroll cue on the first slide. */
+@keyframes cue-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(0.4em); }
+}
+.scroll-cue {
+  display: inline-block;
+  animation: cue-bob 1.8s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .scroll-cue { animation: none; }
 }
