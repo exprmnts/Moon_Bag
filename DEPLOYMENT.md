@@ -64,7 +64,7 @@ Do these in order. The first three are the ones people forget.
 ## 4. Railway (bot)
 
 1. https://railway.com/new → Deploy from GitHub → `exprmnts/Moon_Bag`, branch `main`.
-2. Service settings: **root directory `bot`**, builder **Dockerfile**, health check path **`/health`**, replicas **1**, restart policy on failure, region **US East** (Neon is in `us-east-2`). Turn **App Sleeping / Serverless off**: the bot has no inbound traffic and would be put to sleep.
+2. Service settings: **root directory `bot`** (set this in the dashboard; it is the one thing `railway.json` cannot set), region **US East** (Neon is in `us-east-2`), and **App Sleeping / Serverless off**: the bot has no inbound traffic and would be put to sleep. Builder (Dockerfile), health check path (`/health`, 30 s timeout), one replica and restart-on-failure come from `bot/railway.json` and are applied automatically.
 3. Variables: the eight from §1. `CHAIN=mainnet`, `DRY_RUN=true` for the first observed run.
 4. Deploy. Logs must show, in order: `[boot] schema ok; chain=mainnet`, `[http] listening`, `[boot] @mooonbagbot is polling`, `[watcher] resumed N watcher(s)`.
 5. Open `<service-url>/health`: expect `{"ok":true,"chain":"mainnet",...}`.
