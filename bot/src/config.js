@@ -3,7 +3,7 @@
 require("dotenv").config();
 
 const { robinhood, robinhoodTestnet } = require("viem/chains");
-const { parseEther } = require("viem");
+const { parseEther, isAddress, getAddress } = require("viem");
 
 function required(name) {
   const v = process.env[name];
@@ -21,6 +21,23 @@ const ALCHEMY_API_KEY = required("ALCHEMY_API_KEY");
 const ALCHEMY_NETWORK = IS_MAINNET ? "robinhood-mainnet" : "robinhood-testnet";
 
 const chain = IS_MAINNET ? robinhood : robinhoodTestnet;
+
+// The fee: 1% of every buy, taken from the token bought and paid to the treasury
+// inside the swap (Uniswap Trading API integratorFees). The treasury is a public
+// address only; the bot never holds its key. Mainnet refuses to boot without one
+// so a forgotten variable cannot silently run fee-free.
+const FEE_BIPS = 100;
+const TREASURY_RAW = (process.env.TREASURY_ADDRESS || "").trim();
+let treasury = null;
+if (TREASURY_RAW) {
+  if (!isAddress(TREASURY_RAW, { strict: false })) {
+    throw new Error(`TREASURY_ADDRESS is not a valid address: ${TREASURY_RAW}`);
+  }
+  treasury = getAddress(TREASURY_RAW);
+}
+if (IS_MAINNET && !treasury) {
+  throw new Error("Missing TREASURY_ADDRESS in environment: CHAIN=mainnet needs somewhere to send the 1% buy fee");
+}
 
 const config = {
   chainName: CHAIN_NAME,
@@ -46,6 +63,10 @@ const config = {
 
   dryRun: String(process.env.DRY_RUN ?? "true").toLowerCase() !== "false",
   port: Number(process.env.PORT || 3000),
+
+  treasury, // checksummed, or null (testnet only)
+  FEE_BIPS, // basis points of the tokens bought, 100 = 1%; Uniswap allows at most 500
+  feeEnabled: Boolean(treasury) && FEE_BIPS > 0,
 
   DEFAULT_BUY_ETH: "0.005",
   DEFAULT_BUY_WEI: parseEther("0.005"),

@@ -127,8 +127,8 @@ function Token() {
       </div>
       <div className="mt-12 space-y-4 sm:mt-16 sm:space-y-5">
         <P className="t-label">Revenue</P>
-        <P className="t-md">1% transaction fee on all trades</P>
-        <P className="t-md">1% of the moonbag when you profit</P>
+        <P className="t-md">1% fee on every buy, taken in the token</P>
+        <P className="t-md">We hold the same moonbags you do.</P>
       </div>
     </Column>
   );

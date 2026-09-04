@@ -73,10 +73,10 @@ Why: the biggest drop-off is getting ETH onto Robinhood Chain, not the bot.
 
 ### 6. Make the site's promises true, or delete them — 2 to 4 days
 
-Why: the FAQ promises a 1% fee, early access for $MOON holders and subscriptions. None exist in the bot. This is the monetization and the trust question.
+Why: the FAQ promised a 1% fee, early access for $MOON holders and subscriptions. The fee now exists (2026-09-05) and the site says what it really does. The gate and subscriptions still do not exist. This is the monetization and the trust question.
 
 - $MOON gate: balance check at `/start` against a threshold; clear "hold X $MOON to use the bot" message.
-- 1% fee carved out of each buy and sell to a treasury address (the Trading API can take a fee portion in the swap; otherwise one extra transfer).
+- ~~1% fee carved out of each buy to a treasury address~~ **Done, 2026-09-05.** 1% of every buy, taken in the token bought, paid to `TREASURY_ADDRESS` inside the swap via the Trading API's `integratorFees`. There is no sell side, so there is no sell fee. See `FEE-PLAN.md`.
 - Or rewrite the FAQ to what is real. Owner's decision.
 
 ### 7. The moonbag portfolio, then the Mini App — 2 days text; Mini App 4+ weeks, later

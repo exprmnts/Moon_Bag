@@ -1,2 +1,6 @@
 .env
+# `Untitled` is a stray copy of .env with live secrets (bot token, Neon password,
+# API keys, MASTER_ENCRYPTION_KEY). Ignored so it can never be committed.
+# Move it out of the repo or delete it; do not rely on this line alone.
+Untitled
 /node_modules

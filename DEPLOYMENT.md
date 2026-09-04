@@ -15,9 +15,10 @@ There are two deployables: the **bot** (`bot/`, Railway, Dockerfile) and the **s
 | `MASTER_ENCRYPTION_KEY` | `openssl rand -hex 32` | Encrypts every user's private key. See §4. |
 | `CHAIN` | you | `testnet` (46630) or `mainnet` (4663). Selects RPC, WSS, explorer, chain id. |
 | `DRY_RUN` | you | `true` = never send a swap, message "Would buy" instead. A real code branch in `executor.buy`. |
+| `TREASURY_ADDRESS` | you | Public address that receives 1% of the tokens on every buy. **Required on mainnet**: the bot refuses to boot without it. Address only, never a private key. Must not be a wallet anyone watches with the bot (see §3). |
 | `PORT` | host | `/health` and keep-alive. Railway injects its own; the bot reads whatever is set. |
 
-Nothing else is configurable by environment. Buy amount default (0.005 ETH), the 5% threshold, 1% slippage and the 60 s poll are constants in `bot/src/config.js`.
+Nothing else is configurable by environment. Buy amount default (0.005 ETH), the 5% threshold, 1% slippage, the 60 s poll and the fee rate (`FEE_BIPS = 100`, i.e. 1%) are constants in `bot/src/config.js`.
 
 ## 2. Run locally
 
@@ -59,18 +60,20 @@ Do these in order. The first three are the ones people forget.
 - [ ] `node scripts/spike-quote.js` returns `/swap 200` with your Uniswap key.
 - [ ] No other bot process is running anywhere (laptop, another host). Telegram returns 409 conflicts otherwise.
 - [ ] BotFather polish: `/setdescription`, `/setabouttext`, `/setcommands` (`start`, `help`), `/setuserpic` from the brand kit.
-- [ ] Decide the FAQ on the site: it still mentions a 1% fee, holder access and subscriptions, none of which exist in the bot.
+- [ ] **Treasury set and separate.** `TREASURY_ADDRESS` is in the Railway variables (mainnet refuses to boot without it) and is **not** an address any user watches as a trading wallet. If it is, every fee payment shows up as "Buy detected" on that wallet and moves its baselines; the boot log warns about it.
+- [ ] `node scripts/spike-quote.js` shows an `INTEGRATOR` output to the treasury at 100 bps before the first real buy.
+- [ ] The site still promises holder access and subscriptions, which do not exist in the bot. The fee promise is now true (`ROADMAP-V2.md` item 6).
 
 ## 4. Railway (bot)
 
 1. https://railway.com/new → Deploy from GitHub → `exprmnts/Moon_Bag`, branch `main`.
 2. Service settings: **root directory `bot`** (set this in the dashboard; it is the one thing `railway.json` cannot set), region **US East** (Neon is in `us-east-2`), and **App Sleeping / Serverless off**: the bot has no inbound traffic and would be put to sleep. Builder (Dockerfile), health check path (`/health`, 30 s timeout), one replica and restart-on-failure come from `bot/railway.json` and are applied automatically.
-3. Variables: the eight from §1. `CHAIN=mainnet`, `DRY_RUN=true` for the first observed run.
+3. Variables: the nine from §1 (`TREASURY_ADDRESS` included; mainnet will not boot without it). `CHAIN=mainnet`, `DRY_RUN=true` for the first observed run.
 4. Deploy. Logs must show, in order: `[boot] schema ok; chain=mainnet`, `[http] listening`, `[boot] @mooonbagbot is polling`, `[watcher] resumed N watcher(s)`.
 5. Open `<service-url>/health`: expect `{"ok":true,"chain":"mainnet",...}`.
 6. In Telegram: `/start`, Create Wallet. This is a **new** wallet in the new database; fund this address.
 7. Add a trading wallet that trades Pons tokens, Enable Moonbags, wait for a real sell: expect "Sell detected" and "Would buy".
-8. Flip `DRY_RUN=false` in Railway (redeploys). Set buy amount to 0.001, fund the bot wallet with ~0.01 ETH, sell 10% of a graduated Pons token from the watched wallet: expect "Auto-buy complete" with a Blockscout link and a `confirmed` row in `trades`.
+8. Flip `DRY_RUN=false` in Railway (redeploys). Set buy amount to 0.001, fund the bot wallet with ~0.01 ETH, sell 10% of a graduated Pons token from the watched wallet: expect "Auto-buy complete" naming the tokens received and the Moonbag fee, a Blockscout link, and a `confirmed` row in `trades` with `fee_amount` and `tokens_out` filled in. On Blockscout the transaction must show **two** transfers of that token: 99% to the bot wallet and 1% to the treasury.
 9. Restart the deployment once. Trading Wallets must still show Moonbags Enabled without pressing Enable again.
 
 Rollback: Railway → Deployments → redeploy the previous one. The schema is additive (`create table if not exists`), so older code runs against a newer database.
@@ -84,7 +87,8 @@ Before pushing site changes: `npm run lint && npm run build` in `moon-bag/`, the
 ## 6. Operating it
 
 - **Health:** `/health` returns `{ ok, chain, chainId, dryRun, watchers, wss, addresses }`. `wss:false` means the socket died; the 60 s poll keeps working and rebuilds the socket on its next tick.
-- **Logs to know:** `[watcher] transfer touching <addr> at block N` (event path fired), `[executor] <key> sent <hash>` (swap sent), `[executor] <key> failed: <reason>`, `[watcher] WSS error, relying on the poll`.
+- **Logs to know:** `[watcher] transfer touching <addr> at block N` (event path fired), `[executor] <key> sent <hash>` (swap sent), `[executor] <key> fee <amount> of <token> → <treasury>` (fee collected), `[executor] <key> failed: <reason>`, `[watcher] WSS error, relying on the poll`, `[boot] WARNING: the treasury … is also a watched trading wallet`.
+- **Revenue to date:** `select token, sum(fee_amount) from trades where status = 'confirmed' group by token;` Amounts are raw token units; divide by the token's decimals from the `tokens` table.
 - **Costs:** Alchemy free tier (30M CU/month) covers a few dozen watched wallets; check the usage graph after day one. Neon free plan compute runs out mid-month because the poll keeps the database awake every minute: use the Launch plan or make the poll database-free (see `ROADMAP-V2.md`). Railway Hobby is enough.
 - **Known behaviours (by design, decide before scale):** a failed buy keeps its baseline and retries on every check, so an unfunded wallet gets a message a minute until funded or stopped; fresh Pons tokens still on the bonding curve return "Buy failed" (no Uniswap route) until the curve adapter exists; there is no minimum position value, so dust tokens trigger buys too; the high-amount warning fires above 1 ETH.
 - **Secrets:** never log or paste them. `bot/.env` is git-ignored. The Alchemy key is embedded in the RPC/WSS URLs and never leaves the server.
