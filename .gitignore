@@ -1,2 +1,4 @@
 design-experiments/
 .DS_Store
+.vercel
+.env*.local
