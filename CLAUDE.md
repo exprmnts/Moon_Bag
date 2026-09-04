@@ -1,6 +1,8 @@
 # Moon_Bag
 
-**Status (2026-09-04):** the bot has been ported from Solana to Robinhood Chain per `ROADMAP.md` (Phases 0–6 prep done, see the Status block at the top of that file). The port is verified on testnet end to end; the mainnet swap, the Railway deploy and the secret rotation are the remaining steps. `ROADMAP.md` decisions are settled; do not reopen them. New product ideas go in its "Later" list.
+**Status (2026-09-04):** the bot has been ported from Solana to Robinhood Chain per `ROADMAP.md` (Phases 0–6 prep done, see the Status block at the top of that file). The port is verified on testnet end to end; the mainnet swap, the Railway deploy and the secret rotation are the remaining steps. `ROADMAP.md` decisions are settled; do not reopen them.
+
+Docs: `README.md` (entry point), `DEPLOYMENT.md` (accounts, env, pre-launch checklist, Railway and Vercel steps, operations), `bot/ARCHITECTURE.md` (the rule, data flow, tables, concurrency, testing pattern), `ROADMAP-V2.md` (what to build next, ranked). New product ideas go in `ROADMAP-V2.md`, not in code.
 
 Two projects live here:
 
