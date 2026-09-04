@@ -225,7 +225,7 @@ export default function Deck() {
           data-cursor
           className="pointer-events-auto"
         >
-          Telegram ↗
+          Open Moonbag Bot ↗
         </a>
         <AnimatePresence initial={false}>
           {visibleIndex >= 0 && (
