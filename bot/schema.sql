@@ -42,6 +42,11 @@ create table if not exists trades (
   error        text,
   created_at   timestamptz default now()
 );
+-- Fee on every buy (2026-09-05): 1% of the tokens bought, paid to the treasury inside the swap.
+alter table trades add column if not exists fee_bips      int;      -- fee requested, basis points (100 = 1%)
+alter table trades add column if not exists fee_recipient text;     -- treasury address the fee went to
+alter table trades add column if not exists fee_amount    numeric;  -- raw token units to the treasury (quoted, then actual from the receipt)
+alter table trades add column if not exists tokens_out    numeric;  -- raw token units to the user (same rule)
 
 create table if not exists tokens (
   address     text primary key,

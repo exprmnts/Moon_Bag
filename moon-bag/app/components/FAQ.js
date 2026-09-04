@@ -8,7 +8,10 @@ const ITEMS = [
     q: "Is my Private key safe?",
     a: "Yes, its only shown once, save it then, cause once its gone, its gone.",
   },
-  { q: "Are there fees?", a: "1% of tokens from all trades." },
+  {
+    q: "Are there fees?",
+    a: "1% of the tokens on every buy, sent to the Moonbag treasury. You spend your full ETH amount and keep the other 99% of the tokens. Nothing is taken on the way out, because the bot never sells.",
+  },
   {
     q: "Can I access without tokens?",
     a: "Yes, initially token holders will receive early access. Anyone can access the bot via a subscription.",

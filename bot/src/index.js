@@ -9,7 +9,10 @@ const wallet = require("./wallet");
 const watcher = require("./watcher");
 const alchemy = require("./services/alchemy");
 
+const fee = require("./fee");
+
 const bot = new Telegraf(config.telegramToken);
+const FEE_PCT = fee.pct(config.FEE_BIPS); // "1%"
 
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const html = (extra = {}) => ({ parse_mode: "HTML", link_preview_options: { is_disabled: true }, ...extra });
@@ -42,10 +45,10 @@ async function ack(ctx) {
 const uid = (ctx) => String(ctx.from.id);
 
 const START_TEXT =
-  "🌑 <b>MoonBag Bot</b>\n\n🚀 <b>Welcome to the Moonbag Bot!</b>\n\n📊 <b>How it works:</b>\n• I monitor your trading wallets\n• When I detect a sell all\n• I automatically buy your moonbag\n\n💡 <b>Get started:</b>\n1. Create your bot wallet\n2. Add trading wallets to monitor\n3. Set your buy amount in ETH\n4. Set and forget your moonbag\n\n🌕 <i>Never forget to leave a moonbag again!</i>";
+  `🌑 <b>MoonBag Bot</b>\n\n🚀 <b>Welcome to the Moonbag Bot!</b>\n\n📊 <b>How it works:</b>\n• I monitor your trading wallets\n• When I detect a sell all\n• I automatically buy your moonbag\n• ${FEE_PCT} of the tokens on every buy is the Moonbag fee\n\n💡 <b>Get started:</b>\n1. Create your bot wallet\n2. Add trading wallets to monitor\n3. Set your buy amount in ETH\n4. Set and forget your moonbag\n\n🌕 <i>Never forget to leave a moonbag again!</i>`;
 
 const HELP_TEXT =
-  "🌑 <b>MoonBag Bot - Help</b>\n\n📚 <b>Commands &amp; Features:</b>\n\n🪙 <b>Create Wallet</b> - Generate a new bot wallet for auto-buying moonbags\n🏦 <b>Show Address</b> - Display your bot wallet address\n💰 <b>Wallet Balance</b> - Check ETH and moonbag balances\n➕ <b>Add Trading Wallet</b> - Monitor your trading wallets for sells\n➖ <b>Remove Trading Wallet</b> - Stop monitoring specific addresses\n💸 <b>Set Buy Amount</b> - Configure ETH amount per moonbag\n📊 <b>Positions</b> - View moonbags\n👀 <b>Trading Wallets</b> - List all trading wallet addresses\n▶️ <b>Enable Moonbags</b> - Begin monitoring and auto-buying\n⏹ <b>Disable Moonbags</b> - Pause monitoring\n🔑 <b>Export Key</b> - Back up your bot wallet's private key\n\n💡 <b>How Moonbag Bot Works:</b>\n• Establish a baseline for each token in monitored wallets\n• When you sell all, I auto-buy your moonbag\n• Uses your configured ETH amount per buy\n• Sends notifications for all actions\n\n⚠️ <b>Important Notes:</b>\n• Keep your bot wallet funded with ETH for gas\n• Each sell detection triggers one moonbag\n• Monitor your bot wallet balance regularly\n\n🚀 <b>Ready to start? Use the buttons below!</b>";
+  `🌑 <b>MoonBag Bot - Help</b>\n\n📚 <b>Commands &amp; Features:</b>\n\n🪙 <b>Create Wallet</b> - Generate a new bot wallet for auto-buying moonbags\n🏦 <b>Show Address</b> - Display your bot wallet address\n💰 <b>Wallet Balance</b> - Check ETH and moonbag balances\n➕ <b>Add Trading Wallet</b> - Monitor your trading wallets for sells\n➖ <b>Remove Trading Wallet</b> - Stop monitoring specific addresses\n💸 <b>Set Buy Amount</b> - Configure ETH amount per moonbag\n📊 <b>Positions</b> - View moonbags\n👀 <b>Trading Wallets</b> - List all trading wallet addresses\n▶️ <b>Enable Moonbags</b> - Begin monitoring and auto-buying\n⏹ <b>Disable Moonbags</b> - Pause monitoring\n🔑 <b>Export Key</b> - Back up your bot wallet's private key\n\n💡 <b>How Moonbag Bot Works:</b>\n• Establish a baseline for each token in monitored wallets\n• When you sell all, I auto-buy your moonbag\n• Uses your configured ETH amount per buy\n• Sends notifications for all actions\n\n⚠️ <b>Important Notes:</b>\n• Keep your bot wallet funded with ETH for gas\n• Each sell detection triggers one moonbag\n• ${FEE_PCT} of the tokens on every buy go to the Moonbag treasury: you spend your full ETH amount, the rest of the tokens land in your wallet. Nothing is taken on the way out, the bot never sells\n• Monitor your bot wallet balance regularly\n\n🚀 <b>Ready to start? Use the buttons below!</b>`;
 
 const NO_WALLET_TEXT = "❌ <b>No Wallet Found</b>\n\nPlease create a wallet first using <b>🪙 Create Wallet</b>.";
 
@@ -141,7 +144,7 @@ bot.action("SET_BUY_AMOUNT", async (ctx) => {
   if (!user) return ctx.reply(NO_WALLET_TEXT, withMenu());
   await wallet.setAwaiting(uid(ctx), "buy_amount");
   await ctx.reply(
-    `💰 <b>Set Buy Amount</b>\n\nSend me the ETH amount to spend per moonbag (e.g., 0.005, 0.01, 0.05).\n\nCurrent: <b>${formatEther(user.buyAmountWei)} ETH</b>\n\n<i>This is how much ETH I'll spend on each moonbag!</i>`,
+    `💰 <b>Set Buy Amount</b>\n\nSend me the ETH amount to spend per moonbag (e.g., 0.005, 0.01, 0.05).\n\nCurrent: <b>${formatEther(user.buyAmountWei)} ETH</b>\n\n<i>This is how much ETH I'll spend on each moonbag. ${FEE_PCT} of the tokens bought is the Moonbag fee.</i>`,
     html()
   );
 });
@@ -376,12 +379,31 @@ bot.catch((err, ctx) => {
 });
 
 // ---- boot ---------------------------------------------------------------------
+// The treasury receives a token transfer on every buy. If it is also a watched
+// trading wallet, those transfers read as "Buy detected" and raise that wallet's
+// baselines, so say so loudly instead of letting fee income look like trading.
+async function warnIfTreasuryWatched() {
+  if (!config.feeEnabled) return;
+  try {
+    const rows = await db.many("select telegram_id from watched_wallets where lower(address) = lower($1)", [config.treasury]);
+    if (rows.length) {
+      console.warn(
+        `[boot] WARNING: the treasury ${config.treasury} is also a watched trading wallet (telegram ${rows
+          .map((r) => r.telegram_id)
+          .join(", ")}). Every fee payment will look like a buy on that wallet and will move its baselines. Use a separate address for the treasury.`
+      );
+    }
+  } catch (err) {
+    console.warn(`[boot] treasury check skipped: ${err.message}`);
+  }
+}
+
 function startHttp() {
   const server = http.createServer((req, res) => {
     if (req.url === "/health") {
       const s = watcher.status();
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ ok: true, chain: config.chainName, chainId: config.chainId, dryRun: config.dryRun, ...s }));
+      res.end(JSON.stringify({ ok: true, chain: config.chainName, chainId: config.chainId, dryRun: config.dryRun, feeBips: config.feeEnabled ? config.FEE_BIPS : 0, treasury: config.treasury, ...s }));
       return;
     }
     res.end("Moonbag bot is alive 👍");
@@ -392,7 +414,8 @@ function startHttp() {
 
 async function main() {
   await db.ensureSchema();
-  console.log(`[boot] schema ok; chain=${config.chainName} (${config.chainId}) dryRun=${config.dryRun}`);
+  console.log(`[boot] schema ok; chain=${config.chainName} (${config.chainId}) dryRun=${config.dryRun} fee=${config.feeEnabled ? `${config.FEE_BIPS}bps→${config.treasury}` : "off"}`);
+  await warnIfTreasuryWatched();
   const server = startHttp();
 
   // launch() only resolves when polling stops, so the rest happens in the callback.

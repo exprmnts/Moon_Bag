@@ -34,6 +34,7 @@ src/config.js          env parsing + chain constants (viem chain objects, Alchem
 src/index.js           Telegraf handlers (12 buttons: wallet, trading wallets, buy amount, Enable/Disable Moonbags, Export Key; plus text input), boot, /health. Exports { bot }; boots only when run directly.
 src/wallet.js          users, encrypted keys, buy amount, watched wallets, the one-slot conversation state
 src/decide.js          the rule above
+src/fee.js             the 1% fee, pure: integratorFees() for the quote, splitOutputs() to verify it, amountsFromReceipt() to read what actually moved
 src/watcher.js         WSS Transfer subscriptions, 60 s poll, checkAddress, start/stop/resume
 src/executor.js        buy(): trades row → quote → swap → send → receipt → message; DRY_RUN branch
 src/services/db.js     pg Pool, ensureSchema() runs ../schema.sql at boot, query helpers
@@ -55,7 +56,9 @@ test/decide.test.js    node:test
 
 **`checkAddress`** → `alchemy.getTokenBalances(address)` (all ERC-20s with non-zero balance) and the wallet's rows in `positions` → union of tokens → `decide` per token → messages, baseline updates, and `executor.buy` on a sell.
 
-**`executor.buy`** → insert `trades(sell_key, status='pending')`, skip if it exists or if a pending buy for the same token is younger than 3 minutes → if `DRY_RUN`, mark `dry_run` and message "Would buy" → else `uniswap.quote` (native ETH in, token out, 1% slippage) → `uniswap.swap` → `walletClient.sendTransaction({ to, value, data, gas })` with the user's decrypted key → `waitForTransactionReceipt` → mark `confirmed` and message with a Blockscout link. Any error marks `failed` and messages "Buy failed: <reason>". `buy` never throws.
+**`executor.buy`** → insert `trades(sell_key, status='pending')`, skip if it exists or if a pending buy for the same token is younger than 3 minutes → if `DRY_RUN`, mark `dry_run` and message "Would buy" → else `uniswap.quote` (native ETH in, token out, 1% slippage, **1% fee to the treasury**) → `fee.splitOutputs` verifies the quote pays exactly `FEE_BIPS` to `TREASURY_ADDRESS` and **throws before anything is signed** if it does not → `uniswap.swap` → `walletClient.sendTransaction({ to, value, data, gas })` with the user's decrypted key → `waitForTransactionReceipt` → `fee.amountsFromReceipt` reads the token's `Transfer` logs for what actually moved → mark `confirmed`, store `fee_amount` and `tokens_out`, and message the amounts with a Blockscout link. Any error marks `failed` and messages "Buy failed: <reason>". `buy` never throws.
+
+**The fee.** 1% of every buy is taken from the token bought and paid to the treasury **inside the same swap transaction**, using the Uniswap Trading API's `integratorFees` field (`[{ bips, recipient }]` on `/quote`, encoded into the `/swap` calldata). There is no second transaction, the bot never holds the treasury's key, and a reverted swap pays no fee. The quote reports it in `quote.aggregatedOutputs[]`: one entry for the bot wallet, one tagged `fee: "INTEGRATOR"` for the treasury. Native-ETH input never routes through UniswapX, so this stays on the CLASSIC path. `fee.js` is pure and covered by `test/fee.test.js`; it fails closed, so a quote missing `aggregatedOutputs`, paying the wrong address, or carrying the wrong rate aborts the buy.
 
 ## 4. Tables (`schema.sql`)
 
@@ -65,7 +68,7 @@ test/decide.test.js    node:test
 | `watched_wallets` | one (user, address) pair | addresses stored lowercase; unique per user |
 | `positions` | one (watched wallet, token) baseline | `baseline_amount` raw units as numeric; cascades on wallet delete |
 | `watcher_state` | one per user | `enabled` is the source of truth for resume-on-boot; `last_poll_at` |
-| `trades` | one buy attempt | `sell_key = <watched>:<token>:<block>`; `status` pending / dry_run / confirmed / failed; `buy_tx_hash`, `error` |
+| `trades` | one buy attempt | `sell_key = <watched>:<token>:<block>`; `status` pending / dry_run / confirmed / failed; `buy_tx_hash`, `error`; fee columns `fee_bips`, `fee_recipient`, `fee_amount`, `tokens_out` (raw token units, quoted first then overwritten from the receipt) |
 | `tokens` | metadata cache | `symbol`, `decimals` from on-chain reads; shared across chains, so never point two chains at one database |
 | `conversations` | one per user | `awaiting` = `buy_amount` \| `add_address` \| null |
 
@@ -90,7 +93,9 @@ Amounts are `bigint` in code and `numeric` in Postgres. Never `Number()` a wei v
 
 ## 7. Configuration (`config.js`)
 
-`CHAIN` picks the viem chain object (`robinhood` 4663 or `robinhoodTestnet` 46630, both shipped by viem with multicall3), the Alchemy HTTPS and WSS URLs, the explorer base and the WETH reference. Constants: `DEFAULT_BUY_ETH = 0.005`, `SELL_THRESHOLD = 0.05`, `SLIPPAGE = 1` (%), `POLL_MS = 60000`, `EVENT_DEBOUNCE_MS = 2000`, `HIGH_BUY_WARN_ETH = 1`. `DRY_RUN` defaults to true unless the string is exactly `false`.
+`CHAIN` picks the viem chain object (`robinhood` 4663 or `robinhoodTestnet` 46630, both shipped by viem with multicall3), the Alchemy HTTPS and WSS URLs, the explorer base and the WETH reference. Constants: `DEFAULT_BUY_ETH = 0.005`, `SELL_THRESHOLD = 0.05`, `SLIPPAGE = 1` (%), `POLL_MS = 60000`, `EVENT_DEBOUNCE_MS = 2000`, `HIGH_BUY_WARN_ETH = 1`, `FEE_BIPS = 100` (1%; Uniswap allows at most 500). `DRY_RUN` defaults to true unless the string is exactly `false`.
+
+`TREASURY_ADDRESS` is validated and checksummed at boot; `config.feeEnabled` is true only when it is set. **Mainnet throws at boot without it**, so a forgotten variable can never trade fee-free; testnet tolerates it missing (there is no Uniswap there anyway). The treasury must not also be a watched trading wallet: fee transfers into it read as "Buy detected" and move that wallet's baselines. `index.js` warns at boot when it is.
 
 ## 8. Testing
 
@@ -115,7 +120,8 @@ await bot.handleUpdate({ update_id: 2, message: { message_id: 2, from, chat, dat
 | Want to | Touch |
 | --- | --- |
 | The trigger rule or threshold | `decide.js`, `config.SELL_THRESHOLD`, the test |
-| What a buy does (size, route, fee) | `executor.buy`, `services/uniswap.js` |
+| What a buy does (size, route) | `executor.buy`, `services/uniswap.js` |
+| The fee rate, or turning the fee off | `config.FEE_BIPS` and `TREASURY_ADDRESS`; the logic is `fee.js` and `test/fee.test.js` |
 | A new button | `mainKeyboard()` and a `bot.action` in `index.js`; typed input goes through `conversations.awaiting` |
 | Message wording | the handler or `watcher.js` / `executor.js` where it is sent; HTML parse mode, escape user-controlled text with `esc()` |
 | A new table or column | `schema.sql` with `if not exists`; there is no migration tool |
