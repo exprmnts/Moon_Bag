@@ -4,6 +4,7 @@ import { group, line } from "./variants";
 import PillButton from "./PillButton";
 import Chart from "./Chart";
 import FAQ from "./FAQ";
+import { BOT_URL } from "../site";
 
 // Word-by-word reveal. Each word is a line-variant child of a faster group.
 function Words({ text, as: Tag = "p", className = "", stagger = 0.05 }) {
@@ -186,6 +187,18 @@ function Faq() {
     <Column>
       <P className="t-label mb-8 sm:mb-10">FAQ</P>
       <FAQ />
+      {/* The way in. Same pill as the hero button, but a real link. */}
+      <P className="t-md mt-10 text-center sm:mt-14">
+        <a
+          href={BOT_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          data-cursor
+          className="inline-block rounded-full border-[1.5px] border-black px-[1.1em] py-[0.22em] leading-none transition-all duration-300 hover:bg-black hover:text-white active:scale-95"
+        >
+          Open Moonbag Bot →
+        </a>
+      </P>
     </Column>
   );
 }

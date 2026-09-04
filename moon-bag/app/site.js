@@ -7,3 +7,5 @@ export const HEADLINE = "Did you leave a moonbag?";
 export const DESCRIPTION =
   "A single-purpose Telegram bot that makes sure you always leave a moonbag. " +
   "You cannot sell it all until your targets are hit. $MOON, launched on Pons.";
+// The Telegram bot. Set NEXT_PUBLIC_BOT_URL on the host to point elsewhere.
+export const BOT_URL = process.env.NEXT_PUBLIC_BOT_URL ?? "https://t.me/mooonbagbot";
