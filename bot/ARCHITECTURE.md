@@ -31,7 +31,7 @@ The bot never sells. The bought tokens sit in the user's bot wallet; the only wa
 
 ```
 src/config.js          env parsing + chain constants (viem chain objects, Alchemy URLs, explorer, thresholds)
-src/index.js           Telegraf handlers (12 buttons + text input), boot, /health. Exports { bot }; boots only when run directly.
+src/index.js           Telegraf handlers (12 buttons: wallet, trading wallets, buy amount, Enable/Disable Moonbags, Export Key; plus text input), boot, /health. Exports { bot }; boots only when run directly.
 src/wallet.js          users, encrypted keys, buy amount, watched wallets, the one-slot conversation state
 src/decide.js          the rule above
 src/watcher.js         WSS Transfer subscriptions, 60 s poll, checkAddress, start/stop/resume

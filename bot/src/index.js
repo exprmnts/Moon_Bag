@@ -20,14 +20,14 @@ function mainKeyboard() {
     [Markup.button.callback("🪙 Create Wallet", "CREATE_WALLET")],
     [Markup.button.callback("🏦 Show My Address", "SHOW_ADDRESS")],
     [Markup.button.callback("💰 Wallet Balance", "CHECK_BALANCE")],
-    [Markup.button.callback("➕ Add Watch Address", "ADD_WATCH_ADDR")],
-    [Markup.button.callback("➖ Remove Watch Address", "REMOVE_WATCH_ADDR")],
+    [Markup.button.callback("➕ Add Trading Wallet", "ADD_WATCH_ADDR")],
+    [Markup.button.callback("➖ Remove Trading Wallet", "REMOVE_WATCH_ADDR")],
     [Markup.button.callback("💸 Set Buy Amount (ETH)", "SET_BUY_AMOUNT")],
     [Markup.button.callback("📊 Positions", "SHOW_POSITIONS")],
-    [Markup.button.callback("👀 Watch Addresses", "SHOW_WATCH")],
+    [Markup.button.callback("👀 Trading Wallets", "SHOW_WATCH")],
     [
-      Markup.button.callback("▶️ Start Watching", "START_WATCH"),
-      Markup.button.callback("⏹ Stop Watching", "STOP_WATCH"),
+      Markup.button.callback("▶️ Enable Moonbags", "START_WATCH"),
+      Markup.button.callback("⏹ Disable Moonbags", "STOP_WATCH"),
     ],
     [Markup.button.callback("❓ Help", "HELP")],
     [Markup.button.callback("🔑 Export Key", "EXPORT_KEY")],
@@ -42,10 +42,10 @@ async function ack(ctx) {
 const uid = (ctx) => String(ctx.from.id);
 
 const START_TEXT =
-  "🌑 <b>Moon-Bag Guardian Bot</b>\n\n🚀 <b>Welcome to the ultimate dip-buying companion!</b>\n\n📊 <b>How it works:</b>\n• I monitor external wallet addresses you specify\n• When I detect a sell (drop below 5% of baseline)\n• I automatically buy the dip with your bot wallet\n\n💡 <b>Get started:</b>\n1. Create your bot wallet\n2. Add external addresses to monitor\n3. Set your buy amount in ETH\n4. Start watching and auto-buying!\n\n⚡ <i>Never miss a dip again!</i>";
+  "🌑 <b>MoonBag Bot</b>\n\n🚀 <b>Welcome to the Moonbag Bot!</b>\n\n📊 <b>How it works:</b>\n• I monitor your trading wallets\n• When I detect a sell all\n• I automatically buy your moonbag\n\n💡 <b>Get started:</b>\n1. Create your bot wallet\n2. Add trading wallets to monitor\n3. Set your buy amount in ETH\n4. Set and forget your moonbag\n\n🌕 <i>Never forget to leave a moonbag again!</i>";
 
 const HELP_TEXT =
-  "🌑 <b>Moon-Bag Guardian Bot - Help</b>\n\n📚 <b>Commands & Features:</b>\n\n🪙 <b>Create Wallet</b> - Generate a new bot wallet for auto-buying\n🏦 <b>Show Address</b> - Display your bot wallet address\n💰 <b>Wallet Balance</b> - Check ETH and token balances\n➕ <b>Add Watch Address</b> - Monitor external wallets for sells\n➖ <b>Remove Watch Address</b> - Stop monitoring specific addresses\n💸 <b>Set Buy Amount</b> - Configure ETH amount per auto-buy\n📊 <b>Positions</b> - View monitored wallet positions\n👀 <b>Watch Addresses</b> - List all monitored addresses\n▶️ <b>Start Watching</b> - Begin monitoring and auto-buying\n⏹ <b>Stop Watching</b> - Pause monitoring\n🔑 <b>Export Key</b> - Back up your bot wallet's private key\n\n💡 <b>How Auto-Buy Works:</b>\n• I establish a baseline for each token in monitored wallets\n• When a token drops below 5% of baseline, I auto-buy\n• Uses your configured ETH amount per buy\n• Sends notifications for all actions\n\n⚠️ <b>Important Notes:</b>\n• Keep your bot wallet funded with ETH for gas\n• Each sell detection triggers one auto-buy\n• Monitor your bot wallet balance regularly\n\n🚀 <b>Ready to start? Use the buttons below!</b>";
+  "🌑 <b>MoonBag Bot - Help</b>\n\n📚 <b>Commands &amp; Features:</b>\n\n🪙 <b>Create Wallet</b> - Generate a new bot wallet for auto-buying moonbags\n🏦 <b>Show Address</b> - Display your bot wallet address\n💰 <b>Wallet Balance</b> - Check ETH and moonbag balances\n➕ <b>Add Trading Wallet</b> - Monitor your trading wallets for sells\n➖ <b>Remove Trading Wallet</b> - Stop monitoring specific addresses\n💸 <b>Set Buy Amount</b> - Configure ETH amount per moonbag\n📊 <b>Positions</b> - View moonbags\n👀 <b>Trading Wallets</b> - List all trading wallet addresses\n▶️ <b>Enable Moonbags</b> - Begin monitoring and auto-buying\n⏹ <b>Disable Moonbags</b> - Pause monitoring\n🔑 <b>Export Key</b> - Back up your bot wallet's private key\n\n💡 <b>How Moonbag Bot Works:</b>\n• Establish a baseline for each token in monitored wallets\n• When you sell all, I auto-buy your moonbag\n• Uses your configured ETH amount per buy\n• Sends notifications for all actions\n\n⚠️ <b>Important Notes:</b>\n• Keep your bot wallet funded with ETH for gas\n• Each sell detection triggers one moonbag\n• Monitor your bot wallet balance regularly\n\n🚀 <b>Ready to start? Use the buttons below!</b>";
 
 const NO_WALLET_TEXT = "❌ <b>No Wallet Found</b>\n\nPlease create a wallet first using <b>🪙 Create Wallet</b>.";
 
@@ -97,7 +97,7 @@ bot.action("SHOW_ADDRESS", async (ctx) => {
     const user = await wallet.getUser(uid(ctx));
     if (!user) return ctx.reply(NO_WALLET_TEXT, withMenu());
     await ctx.reply(
-      `🏦 <b>Your Bot Wallet Address</b>\n\n📍 <b>Address:</b>\n<code>${user.address}</code>\n\n💡 <i>Send ETH to this address to cover gas and auto-buys.</i>`,
+      `🏦 <b>Your Moonbag Wallet Address</b>\n\n📍 <b>Address:</b>\n<code>${user.address}</code>\n\n💡 <i>Send ETH to this address to cover gas and auto-buys.</i>`,
       withMenu()
     );
   } catch (err) {
@@ -141,7 +141,7 @@ bot.action("SET_BUY_AMOUNT", async (ctx) => {
   if (!user) return ctx.reply(NO_WALLET_TEXT, withMenu());
   await wallet.setAwaiting(uid(ctx), "buy_amount");
   await ctx.reply(
-    `💰 <b>Set Buy Amount</b>\n\nSend me the ETH amount to spend per auto-buy (e.g., 0.005, 0.01, 0.05).\n\nCurrent: <b>${formatEther(user.buyAmountWei)} ETH</b>\n\n<i>This is how much ETH I'll spend each time I detect a sell signal!</i>`,
+    `💰 <b>Set Buy Amount</b>\n\nSend me the ETH amount to spend per moonbag (e.g., 0.005, 0.01, 0.05).\n\nCurrent: <b>${formatEther(user.buyAmountWei)} ETH</b>\n\n<i>This is how much ETH I'll spend on each moonbag!</i>`,
     html()
   );
 });
@@ -152,7 +152,7 @@ bot.action("ADD_WATCH_ADDR", async (ctx) => {
   if (!user) return ctx.reply(NO_WALLET_TEXT, withMenu());
   await wallet.setAwaiting(uid(ctx), "add_address");
   await ctx.reply(
-    "📥 <b>Add Watch Address</b>\n\nSend me the wallet address (0x…) you want me to monitor.\n\n<i>I'll automatically detect sells and buy dips for you!</i>",
+    "📥 <b>Add Trading Wallet</b>\n\nSend me the wallet address (0x…) you want me to monitor.\n\n<i>When it sells, I'll buy your moonbag!</i>",
     html()
   );
 });
@@ -186,7 +186,7 @@ bot.on(message("text"), async (ctx) => {
       );
     }
     await ctx.reply(
-      `✅ <b>Buy Amount Updated!</b>\n\nI'll now spend <b>${value} ETH</b> per auto-buy when I detect sell signals. 🚀`,
+      `✅ <b>Buy Amount Updated!</b>\n\nI'll now spend <b>${value} ETH</b> per moonbag when I detect a sell. 🚀`,
       withMenu()
     );
     return;
@@ -212,13 +212,13 @@ bot.on(message("text"), async (ctx) => {
       await wallet.setAwaiting(telegramId, null);
       await ctx.reply(
         added
-          ? `✅ <b>Address Added Successfully!</b>\n\n<code>${address}</code>\n\nI'm now monitoring this wallet for sell signals and will auto-buy dips! 🚀`
+          ? `✅ <b>Trading Wallet Added!</b>\n\n<code>${address}</code>\n\nI'm now monitoring this wallet for sells and will buy your moonbag! 🚀`
           : `ℹ️ <b>Already on your list</b>\n\n<code>${address}</code>`,
         withMenu()
       );
     } catch (err) {
       console.error("[bot] add watch address", err);
-      await ctx.reply("❌ <b>Failed to add address</b>\n\nPlease try again or contact support.", html());
+      await ctx.reply("❌ <b>Failed to add wallet</b>\n\nPlease try again or contact support.", html());
     }
   }
 });
@@ -227,14 +227,14 @@ bot.action("REMOVE_WATCH_ADDR", async (ctx) => {
   await ack(ctx);
   const list = await wallet.listWatchAddresses(uid(ctx));
   if (!list.length) {
-    return ctx.reply("❌ <b>No Watch Addresses</b>\n\nYou don't have any addresses to remove.", withMenu());
+    return ctx.reply("❌ <b>No Trading Wallets</b>\n\nYou don't have any wallets to remove.", withMenu());
   }
   const rows = list.map((w) => [
     Markup.button.callback(`🗑️ ${w.address.slice(0, 8)}...${w.address.slice(-8)}`, `REMOVE_${w.address}`),
   ]);
   rows.push([Markup.button.callback("🔙 Back to Main Menu", "BACK_TO_MAIN")]);
   await ctx.reply(
-    "🗑️ <b>Remove Watch Address</b>\n\nSelect the address you want to remove from monitoring:",
+    "🗑️ <b>Remove Trading Wallet</b>\n\nSelect the wallet you want to remove from monitoring:",
     html(Markup.inlineKeyboard(rows))
   );
 });
@@ -248,13 +248,13 @@ bot.action(/^REMOVE_(0x[0-9a-fA-F]{40})$/, async (ctx) => {
     if (removed) await watcher.refreshSubscriptions(telegramId);
     await ctx.reply(
       removed
-        ? `✅ <b>Address Removed Successfully!</b>\n\n<code>${address}</code>\n\nI'm no longer monitoring this wallet for sell signals.`
+        ? `✅ <b>Trading Wallet Removed!</b>\n\n<code>${address}</code>\n\nI'm no longer monitoring this wallet for sells.`
         : `ℹ️ <b>Not on your list</b>\n\n<code>${address}</code>`,
       withMenu()
     );
   } catch (err) {
     console.error("[bot] remove watch address", err);
-    await ctx.reply("❌ <b>Failed to Remove Address</b>\n\nPlease try again or contact support.", withMenu());
+    await ctx.reply("❌ <b>Failed to Remove Wallet</b>\n\nPlease try again or contact support.", withMenu());
   }
 });
 
@@ -285,7 +285,7 @@ bot.action("CHECK_BALANCE", async (ctx) => {
     if (tokens.length) {
       text += `🪙 <b>Token Balances:</b>\n━━━━━━━━━━━━━━━━━━━━\n${await tokenLines(tokens, 10, "")}`;
     } else {
-      text += "🪙 <b>Token Balances:</b> No tokens found";
+      text += "🪙 <b>Token Balances:</b> No moonbags found";
     }
     await ctx.reply(text, withMenu());
   } catch (err) {
@@ -301,12 +301,12 @@ bot.action("SHOW_POSITIONS", async (ctx) => {
   if (!user) return ctx.reply(NO_WALLET_TEXT, withMenu());
   const list = await wallet.listWatchAddresses(telegramId);
   if (!list.length) {
-    return ctx.reply("👀 <b>No watch addresses configured</b>\n\nAdd external wallet addresses to monitor their positions.", withMenu());
+    return ctx.reply("👀 <b>No trading wallets configured</b>\n\nAdd your trading wallets to monitor their positions.", withMenu());
   }
-  let text = "📊 <b>Monitored Positions</b>\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
+  let text = "📊 <b>Moonbag Positions</b>\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
   for (let i = 0; i < list.length; i++) {
     const w = list[i];
-    text += `📍 <b>Address ${i + 1}:</b>\n<code>${w.address}</code>\n`;
+    text += `📍 <b>Wallet ${i + 1}:</b>\n<code>${w.address}</code>\n`;
     try {
       const tokens = await alchemy.getTokenBalances(w.address);
       text += tokens.length ? `🪙 <b>Tokens:</b>\n${await tokenLines(tokens, 6, "  ")}\n` : "🪙 <b>Tokens:</b> No tokens found\n";
@@ -325,16 +325,16 @@ bot.action("SHOW_WATCH", async (ctx) => {
   const list = await wallet.listWatchAddresses(telegramId);
   if (!list.length) {
     return ctx.reply(
-      "👀 <b>No Watch Addresses</b>\n\nYou haven't added any external wallet addresses to monitor yet.\n\nUse <b>➕ Add Watch Address</b> to start monitoring other wallets.",
+      "👀 <b>No Trading Wallets</b>\n\nYou haven't added any trading wallets to monitor yet.\n\nUse <b>➕ Add Trading Wallet</b> to start monitoring.",
       withMenu()
     );
   }
   const active = await wallet.isWatcherEnabled(telegramId);
-  let text = "👀 <b>Monitored Addresses</b>\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
-  text += `📡 <b>Status:</b> ${active ? "🟢 <b>Active</b>" : "🔴 <b>Inactive</b>"}\n\n`;
+  let text = "👀 <b>Trading Wallets</b>\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
+  text += `📡 <b>Moonbags:</b> ${active ? "🟢 <b>Enabled</b>" : "🔴 <b>Disabled</b>"}\n\n`;
   list.forEach((w, i) => { text += `${i + 1}. <code>${w.address}</code>\n`; });
-  text += `\n📊 <b>Total:</b> ${list.length} address${list.length === 1 ? "" : "es"}`;
-  if (!active) text += "\n\n💡 <i>Use <b>▶️ Start Watching</b> to begin monitoring these addresses!</i>";
+  text += `\n📊 <b>Total:</b> ${list.length} wallet${list.length === 1 ? "" : "s"}`;
+  if (!active) text += "\n\n💡 <i>Use <b>▶️ Enable Moonbags</b> to begin monitoring these wallets!</i>";
   await ctx.reply(text, withMenu());
 });
 
@@ -344,7 +344,7 @@ bot.action("START_WATCH", async (ctx) => {
   try {
     await watcher.startWatcher(bot, telegramId);
     await ctx.reply(
-      "✅ <b>Watcher Started Successfully!</b>\n\n🚀 I'm now monitoring your watch addresses for sell signals.\n\n📊 I'll automatically buy dips when I detect sells below 5% of the baseline.\n\n💡 <i>Make sure your bot wallet has enough ETH for gas!</i>",
+      "✅ <b>Moonbags Enabled!</b>\n\n🚀 I'm now monitoring your trading wallets for sells.\n\n📊 When I detect a sell, I'll automatically buy your moonbag.\n\n💡 <i>Make sure your bot wallet has enough ETH for gas!</i>",
       withMenu()
     );
   } catch (err) {
@@ -352,7 +352,7 @@ bot.action("START_WATCH", async (ctx) => {
     if (err.message === "NO_WALLET") return ctx.reply(NO_WALLET_TEXT, withMenu());
     console.error("[bot] START_WATCH", err);
     await ctx.reply(
-      "❌ <b>Failed to Start Watcher</b>\n\nPlease ensure you have:\n• A funded wallet with ETH for gas\n• At least one watch address configured\n• Valid wallet configuration",
+      "❌ <b>Failed to Enable Moonbags</b>\n\nPlease ensure you have:\n• A funded wallet with ETH for gas\n• At least one trading wallet configured\n• Valid wallet configuration",
       withMenu()
     );
   }
@@ -366,7 +366,7 @@ bot.action("STOP_WATCH", async (ctx) => {
     console.error("[bot] STOP_WATCH", err);
   }
   await ctx.reply(
-    "⏹ <b>Watcher Stopped</b>\n\nI'm no longer monitoring addresses for sell signals.\n\nUse <b>▶️ Start Watching</b> to resume monitoring.",
+    "⏹ <b>Moonbags Disabled</b>\n\nI'm no longer monitoring your trading wallets.\n\nUse <b>▶️ Enable Moonbags</b> to resume.",
     withMenu()
   );
 });
