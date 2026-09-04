@@ -5,7 +5,24 @@
 Two projects live here:
 
 - `moon-bag/` — the website. Next.js 14 (app router, JavaScript), Tailwind, `motion`. It is a full-screen slide deck of the pitch, not a scrolling page. See `moon-bag/docs/DESIGN.md` for the design system and the deck mechanics.
-- `bot/` — the Moonbag Telegram bot (Telegraf, Solana web3, Firebase). Needs a `.env` with the keys listed in its README before it will start. Not touched by the website work.
+- `bot/` — the Moonbag Telegram bot on Robinhood Chain (Telegraf 4, viem, Neon Postgres via `pg`, Uniswap Trading API). JavaScript, CommonJS, Node 22. Needs `bot/.env` (copy `.env.example`; see `ROADMAP.md` for where each value comes from). Not touched by the website work.
+
+## Working on the bot
+
+```bash
+cd bot
+npm install
+npm run dev              # nodemon; CHAIN=testnet DRY_RUN=true from .env
+npm test                 # node --test (decide() only)
+node scripts/smoke.js <telegram_id>
+curl localhost:3000/health
+```
+
+- Only one bot process at a time (Telegram long-polling). Stop a local run before Railway takes over, and vice versa.
+- `CHAIN` selects Alchemy RPC/WSS, explorer and chain id; `DRY_RUN=true` is a real branch in `executor.buy`. Uniswap exists only on mainnet 4663.
+- Amounts are `bigint` in code and `numeric` in Postgres. Never `Number()` a wei value.
+- `schema.sql` is idempotent and runs at every boot; there is no migration tool. Add columns with `alter table … add column if not exists`.
+- Deploy: Railway service from `bot/` with the Dockerfile (see `bot/README.md`). Neon `main` branch for Railway, `dev` for the laptop.
 
 ## Working on the website
 
@@ -52,4 +69,4 @@ Lint and build, then look at it in a real browser at three widths: a 390px phone
 
 ## Git
 
-Work on a branch, push, and merge to `main`. Do not commit `tg bot/package-lock.json` churn from running `npm install`.
+Work on a branch, push, and merge to `main` (that deploys the site on Vercel; Railway deploys the bot from its own branch setting). Commit `bot/package-lock.json` only when dependencies actually change.
