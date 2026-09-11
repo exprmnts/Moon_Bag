@@ -8,8 +8,10 @@
 //
 // It asserts the things that are easy to break by hand: that the menu matches
 // whether a wallet exists, that a question and its answer are deleted, that the
-// private key is scheduled for deletion, and that a failing buy is retried
-// exactly MAX_BUY_ATTEMPTS times and then alerts.
+// private key is scheduled for deletion, that a failing buy is retried exactly
+// MAX_BUY_ATTEMPTS times and then alerts, and that a user Telegram refuses to
+// deliver to is muted once instead of being retried for every message.
+process.env.LOG_LEVEL ||= "warn"; // the bot's own logging is not what is under test
 process.env.DATABASE_URL ||= "postgres://moonbag:moonbag@localhost:55432/moonbag?sslmode=disable";
 process.env.TELEGRAM_BOT_TOKEN ||= "test:token";
 process.env.ALCHEMY_API_KEY ||= "test";
@@ -552,24 +554,68 @@ async function clean() {
   check("moving back to a private chat updates the address", async () => {});
   assert.equal(await wallet.getChatId(USER), String(CHAT));
 
-  // An unreachable user is reported rather than silently dropped.
+  // ---- 12. a user the bot cannot message ----------------------------------------------
+  // The noise this section exists for. Someone who has never opened a private
+  // chat is refused for every single message, forever — so one sell produced
+  // four failed sends and four alert lines about a person who was never going to
+  // receive any of them. The refusal is a state now: recorded once, reported
+  // once, and cleared the moment they write.
+  console.log("\n12. a user the bot cannot message");
   const realCallApi = Telegram.prototype.callApi;
+  let refused = 0;
   Telegram.prototype.callApi = async function (method, payload) {
     if (method === "sendMessage" && String(payload.chat_id) === String(CHAT)) {
-      const err = new Error("400: Bad Request: chat not found");
-      throw err;
+      refused++;
+      throw new Error("403: Forbidden: bot can't initiate conversation with a user");
     }
     return realCallApi.call(this, method, payload);
   };
+
   n = since();
-  await ui.toUser(bot, USER, "test");
-  Telegram.prototype.callApi = realCallApi;
+  await ui.toUser(bot, USER, "first");
   check("an unreachable user raises an alert", () => {
     assert.ok(
       calls.slice(n).some((c) => c.method === "sendMessage" && String(c.payload.chat_id) === process.env.ADMIN_CHAT_ID && /cannot be messaged/i.test(c.payload.text)),
       "no alert was sent"
     );
   });
+  const muted = await db.one("select unreachable_at, unreachable_reason from users where telegram_id = $1", [USER]);
+  check("the refusal is recorded, not just logged", () => {
+    assert.ok(muted.unreachable_at, "unreachable_at is null");
+    assert.match(muted.unreachable_reason, /initiate conversation/);
+  });
+
+  refused = 0;
+  n = since();
+  await ui.toUser(bot, USER, "second");
+  await ui.toUser(bot, USER, "third");
+  check("no further message is even attempted", () => assert.equal(refused, 0, `${refused} pointless API call(s)`));
+  check("and the team is not told again", () =>
+    assert.equal(calls.slice(n).filter((c) => /cannot be messaged/i.test(c.payload.text || "")).length, 0)
+  );
+
+  // Being unable to tell someone is not a reason to stop buying the moonbag they
+  // asked for. The buy runs; it just runs quietly.
+  uniswap.quote = async () => { throw new Error("Uniswap /quote 404: No quotes available"); };
+  n = since();
+  const mutedBuy = await executor.buy(bot, USER, TOKEN, `${USER}:${WATCHED}:${TOKEN}:71000000:1000-0`);
+  uniswap.quote = realQuote;
+  check("their buys still run", () => assert.equal(mutedBuy.queued, true));
+  check("and still reach a verdict", () => assert.equal(mutedBuy.status, "failed"));
+  check("with nothing sent to them", () =>
+    assert.equal(sentSince(n).filter((c) => String(c.payload.chat_id) === String(CHAT)).length, 0)
+  );
+
+  // Anything they send is proof they can be reached.
+  Telegram.prototype.callApi = realCallApi;
+  await tap("BACK_TO_MAIN");
+  const backAgain = await db.one("select unreachable_at from users where telegram_id = $1", [USER]);
+  check("one message from them clears it", () => assert.equal(backAgain.unreachable_at, null));
+  n = since();
+  await ui.toUser(bot, USER, "welcome back");
+  check("and the bot talks to them again", () =>
+    assert.equal(sentSince(n).filter((c) => String(c.payload.chat_id) === String(CHAT)).length, 1)
+  );
 
   // ---- done ------------------------------------------------------------------------
   await clean();
