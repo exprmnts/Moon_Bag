@@ -16,9 +16,11 @@ There are two deployables: the **bot** (`bot/`, Railway, Dockerfile) and the **s
 | `CHAIN` | you | `testnet` (46630) or `mainnet` (4663). Selects RPC, WSS, explorer, chain id. |
 | `DRY_RUN` | you | `true` = never send a swap, message "Would buy" instead. A real code branch in `executor.buy`. |
 | `TREASURY_ADDRESS` | you | Public address that receives 1% of the tokens on every buy. **Required on mainnet**: the bot refuses to boot without it. Address only, never a private key. Must not be a wallet anyone watches with the bot (see §3). |
+| `ADMIN_CHAT_ID` | you | Optional but strongly recommended. The Telegram chat that receives failure alerts. Either your own user id, or a group id — add the bot to the group first, then read the id from `getChat`. **Basic groups have short negative ids** (`-5342855733`); only supergroups and channels start with `-100`. Both are valid; do not "fix" a short one. Anyone in this chat can run `/retry all`. Without it, a buy that gives up after five attempts is only visible in the log. |
 | `PORT` | host | `/health` and keep-alive. Railway injects its own; the bot reads whatever is set. |
+| `RPC_URL` / `WSS_URL` | — | Optional overrides for the Alchemy endpoints. Only for pointing a local test run at an anvil fork; never set in production. |
 
-Nothing else is configurable by environment. Buy amount default (0.005 ETH), the 5% threshold, 1% slippage, the 60 s poll and the fee rate (`FEE_BIPS = 100`, i.e. 1%) are constants in `bot/src/config.js`.
+Nothing else is configurable by environment. Buy amount default (0.005 ETH), the 5% threshold, 1% slippage, the 60 s poll, the fee rate (`FEE_BIPS = 100`, i.e. 1%), the retry budget (five attempts) and the gas buffer (35%) are constants in `bot/src/config.js`.
 
 ## 2. Run locally
 
@@ -39,6 +41,18 @@ node scripts/spike-ws.js [fromAddress] [seconds]    # prove the WSS Transfer sub
 node scripts/smoke.js <telegram_id>                 # one watcher pass for a user, decisions printed, no messages sent
 ```
 
+End to end, with no real money and no real Telegram:
+
+```bash
+docker run -d --name moonbag-test-pg -e POSTGRES_PASSWORD=moonbag \
+  -e POSTGRES_USER=moonbag -e POSTGRES_DB=moonbag -p 55432:5432 postgres:16-alpine
+node scripts/e2e-ui.js        # every button, both questions, the key timer, the retry queue
+
+anvil --fork-url https://robinhood-mainnet.g.alchemy.com/v2/$ALCHEMY_API_KEY \
+      --chain-id 4663 --port 8545 --silent &
+RPC_URL=http://localhost:8545 node scripts/e2e-chain.js   # a real swap against forked mainnet state
+```
+
 Testnet facts: chain id 46630, RPC `https://rpc.testnet.chain.robinhood.com`, explorer `https://explorer.testnet.chain.robinhood.com`, faucet `https://faucet.testnet.chain.robinhood.com` (needs a browser). Gas is about 0.01 gwei, so 0.0001 ETH covers roughly 180 transfers. The WETH wrapper with `deposit()` is `0x33e4191705c386532ba27cbf171db86919200b94`. Uniswap does not exist on testnet: testnet proves everything except the swap.
 
 ### Manual test loop (testnet)
@@ -47,7 +61,7 @@ Two wallets you control: A (watched) and B (anywhere). Wrap a little ETH to WETH
 
 ### Automated testing
 
-`npm test` covers the pure rule. Everything else is verified with harnesses that stub `Telegram.prototype.callApi` and push fake updates through `bot.handleUpdate` against a real Neon dev branch and Alchemy testnet. `src/index.js` exports `{ bot }` and only boots when run directly, so a harness can `require` it. See `bot/ARCHITECTURE.md` §8 for the pattern.
+`npm test` covers the pure logic (the rule, the fee, error classification); `scripts/e2e-ui.js` and `scripts/e2e-chain.js` cover the rest without touching production. Everything else is verified with harnesses that stub `Telegram.prototype.callApi` and push fake updates through `bot.handleUpdate` against a real Neon dev branch and Alchemy testnet. `src/index.js` exports `{ bot }` and only boots when run directly, so a harness can `require` it. See `bot/ARCHITECTURE.md` §8 for the pattern.
 
 ## 3. Pre-launch checklist (mainnet)
 
