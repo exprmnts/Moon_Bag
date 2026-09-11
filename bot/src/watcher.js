@@ -110,12 +110,19 @@ async function checkAddress(bot, telegramId, watchedWallet, { blockNumber } = {}
         continue;
       }
 
-      // A sell. The key names the exact balance transition, not just the block:
-      // selling the same token three times gives three distinct keys and three
-      // buys, while the WSS event and the poll both seeing one drop still
-      // produce the same key and collapse into one.
+      // A sell. The key has to be unique per *user*, per sell:
+      //
+      //   <telegramId> several people may watch the same trading wallet, and each
+      //                one is owed their own moonbag. Without this they collide and
+      //                only whoever is processed first gets a buy.
+      //   <address>    which watched wallet sold, for the message.
+      //   <token>
+      //   <block>
+      //   <before-after> the exact balance transition, so selling the same token
+      //                three times is three sells, while the WSS event and the
+      //                poll seeing one drop still build one key and collapse.
       if (block == null) block = await alchemy.publicClient().getBlockNumber();
-      const sellKey = `${addr}:${token}:${block}:${base}-${now}`;
+      const sellKey = `${telegramId}:${addr}:${token}:${block}:${base}-${now}`;
       // The baseline moves as soon as the sell is recorded. From that moment the
       // trades row owns the outcome, retries included, so a later check must not
       // see the same drop again and announce it twice.

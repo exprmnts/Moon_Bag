@@ -106,11 +106,13 @@ async function screen(bot, trade, text) {
 const head = (label, token) => `<b>${label}</b>\n<code>${token}</code>`;
 
 // The watched wallet that sold, recovered from the sell key
-// (`<watched>:<token>:<block>:<before>-<after>`), so a retry an hour later can
-// still name the wallet without carrying the watcher's context around.
+// (`<telegramId>:<watched>:<token>:<block>:<before>-<after>`), so a retry an hour
+// later can still name the wallet without carrying the watcher's context around.
+// Scans rather than indexing, so keys written before the telegram id was added
+// still resolve.
 function sourceOf(sellKey) {
-  const first = String(sellKey || "").split(":")[0];
-  return /^0x[0-9a-fA-F]{40}$/.test(first) ? alchemy.shortAddress(first) : null;
+  const address = String(sellKey || "").split(":").find((s) => /^0x[0-9a-fA-F]{40}$/.test(s));
+  return address ? alchemy.shortAddress(address) : null;
 }
 
 // ---- gas ------------------------------------------------------------------------
