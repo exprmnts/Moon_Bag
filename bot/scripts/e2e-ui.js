@@ -10,7 +10,8 @@
 // whether a wallet exists, that a question and its answer are deleted, that the
 // private key is scheduled for deletion, that a failing buy is retried exactly
 // MAX_BUY_ATTEMPTS times and then alerts, and that a user Telegram refuses to
-// deliver to is muted once instead of being retried for every message.
+// deliver to is muted once instead of being retried for every message, and that
+// the WSS callback runs without crashing.
 process.env.LOG_LEVEL ||= "warn"; // the bot's own logging is not what is under test
 process.env.DATABASE_URL ||= "postgres://moonbag:moonbag@localhost:55432/moonbag?sslmode=disable";
 process.env.TELEGRAM_BOT_TOKEN ||= "test:token";
@@ -615,6 +616,31 @@ async function clean() {
   await ui.toUser(bot, USER, "welcome back");
   check("and the bot talks to them again", () =>
     assert.equal(sentSince(n).filter((c) => String(c.payload.chat_id) === String(CHAT)).length, 1)
+  );
+
+  // ---- 13. the WSS event path ---------------------------------------------------------
+  // The crash this section exists for: `for (const log of logs)` inside onLogs
+  // shadowed this module's logger, so the debounced callback called .debug() on
+  // a Transfer log and killed the process. Requiring the module cannot catch
+  // that — only running the callback can.
+  console.log("\n13. the WSS event path");
+  const fakeWs = { watchEvent: () => () => {} };
+  alchemy.wsClient = () => fakeWs;
+  alchemy.resetWsClient = () => fakeWs;
+  await db.query("update watcher_state set enabled = true where telegram_id = $1", [USER]);
+  config.EVENT_DEBOUNCE_MS = 20;
+  await watcher.rebuildSubscriptions();
+
+  let crashed = null;
+  const onUncaught = (err) => { crashed = err; };
+  process.once("uncaughtException", onUncaught);
+  watcher.onLogs([
+    { args: { from: WATCHED, to: "0x000000000000000000000000000000000000dEaD" }, blockNumber: 60212068n },
+  ]);
+  await new Promise((r) => setTimeout(r, 300));
+  process.removeListener("uncaughtException", onUncaught);
+  check("a Transfer touching a watched wallet does not crash the process", () =>
+    assert.equal(crashed, null, crashed && crashed.message)
   );
 
   // ---- done ------------------------------------------------------------------------

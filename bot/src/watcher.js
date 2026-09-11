@@ -181,14 +181,16 @@ function noteFailure(row, err) {
 }
 
 // ---- WSS subscription -----------------------------------------------------------
+// `transfer`, not `log`: this file's logger is called log, and a loop variable
+// of that name silently shadowed it inside the timer below.
 function onLogs(logs) {
-  for (const log of logs) {
-    const from = log.args?.from?.toLowerCase();
-    const to = log.args?.to?.toLowerCase();
+  for (const transfer of logs) {
+    const from = transfer.args?.from?.toLowerCase();
+    const to = transfer.args?.to?.toLowerCase();
     for (const address of [from, to]) {
       if (!address || !subs.addresses.has(address)) continue;
       const entry = debounces.get(address) || { timer: null, blockNumber: null };
-      entry.blockNumber = log.blockNumber;
+      entry.blockNumber = transfer.blockNumber;
       if (entry.timer) clearTimeout(entry.timer);
       entry.timer = setTimeout(() => {
         debounces.delete(address);
@@ -359,6 +361,7 @@ function shutdown() {
 
 module.exports = {
   checkAddress,
+  onLogs, // exported for the test that drives the WSS path
   seedPositions,
   startWatcher,
   stopWatcher,
