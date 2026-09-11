@@ -83,11 +83,37 @@ async function quote({ tokenOut, amountWei, swapper }) {
   return post("/quote", body);
 }
 
+// The other direction: a token back to native ETH, used only by
+// scripts/sell-with-key.js. No integrator fee — the 1% is charged on the way in,
+// and these are already the holder's tokens. The response carries `permitData`
+// (an EIP-712 PermitSingle to sign) and `isTokenApprovalApplicable`, because
+// spending an ERC-20 needs Permit2 where spending native ETH does not.
+async function quoteSell({ tokenIn, amountWei, swapper }) {
+  return post("/quote", {
+    tokenIn,
+    tokenOut: config.nativeEth,
+    tokenInChainId: config.chainId,
+    tokenOutChainId: config.chainId,
+    amount: amountWei.toString(),
+    type: "EXACT_INPUT",
+    swapper,
+    slippageTolerance: config.SLIPPAGE,
+    routingPreference: "BEST_PRICE",
+  });
+}
+
 // Builds the transaction for a quote. Returns { to, value, data, chainId, gasLimit }.
-async function swap(quoteResponse) {
-  const json = await post("/swap", { quote: quoteResponse.quote, simulateTransaction: false });
+// A sell also passes the signed permit; a buy with native ETH has none, and the
+// body is then byte for byte what it always was.
+async function swap(quoteResponse, { signature = null } = {}) {
+  const body = { quote: quoteResponse.quote, simulateTransaction: false };
+  if (signature) {
+    body.signature = signature;
+    if (quoteResponse.permitData) body.permitData = quoteResponse.permitData;
+  }
+  const json = await post("/swap", body);
   if (!json?.swap?.to || !json.swap.data) throw new Error("Uniswap /swap returned no transaction");
   return json.swap;
 }
 
-module.exports = { quote, swap, transient };
+module.exports = { quote, quoteSell, swap, transient };

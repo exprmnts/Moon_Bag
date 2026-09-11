@@ -17,6 +17,8 @@ npm run dev                     # nodemon, testnet + DRY_RUN=true by default
 npm test                        # pure logic: decide(), fee(), errors()
 node scripts/spike-quote.js     # Uniswap quote + swap build on mainnet (nothing sent)
 node scripts/spike-ws.js [addr] # WSS Transfer subscription check
+node scripts/buy-with-key.js <token> [eth] [--yes]   # buy with a key you hold: quotes, then sends only with --yes
+node scripts/sell-with-key.js <token> [all|50%] [--yes]  # the mirror: approves Permit2 if needed, then sells
 node scripts/smoke.js <telegram_id>   # one check pass for a user, decisions printed
 node scripts/keycheck.js        # can MASTER_ENCRYPTION_KEY open the wallets in DATABASE_URL?
 curl localhost:3000/health
