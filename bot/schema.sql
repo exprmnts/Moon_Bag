@@ -25,6 +25,13 @@ alter table users add column if not exists chat_id text;
 alter table users add column if not exists unreachable_at     timestamptz;
 alter table users add column if not exists unreachable_reason text;
 
+-- Where the control panel currently sits (2026-09-11). It is one message the bot
+-- edits in place, so a notification sent underneath it leaves the buttons
+-- stranded up the scrollback. Recording it lets the bot delete that message and
+-- send the panel again at the bottom once the chat goes quiet (see src/ui.js).
+alter table users add column if not exists menu_chat_id text;
+alter table users add column if not exists menu_msg_id  bigint;
+
 create table if not exists watched_wallets (
   id           serial primary key,
   telegram_id  text references users,

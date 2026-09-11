@@ -64,7 +64,9 @@ const api = (botOrCtx) => (botOrCtx && botOrCtx.telegram) || botOrCtx;
 
 async function send(botOrCtx, chatId, text, extra = {}) {
   try {
-    return await api(botOrCtx).sendMessage(chatId, text, html(extra));
+    const m = await api(botOrCtx).sendMessage(chatId, text, html(extra));
+    seen(chatId, m && m.message_id);
+    return m;
   } catch (err) {
     log.error(`send to ${chatId} failed: ${err.message}`);
     return null;
@@ -91,7 +93,9 @@ async function toUser(botOrCtx, telegramId, text, extra = {}) {
   const route = await wallet.routeFor(telegramId).catch(() => ({ chatId: String(telegramId), blocked: false }));
   if (route.blocked) return null;
   try {
-    return await api(botOrCtx).sendMessage(route.chatId, text, html(extra));
+    const m = await api(botOrCtx).sendMessage(route.chatId, text, html(extra));
+    seen(route.chatId, m && m.message_id);
+    return m;
   } catch (err) {
     if (unreachable(err)) await mute(telegramId, route, err);
     else log.error(`send to ${telegramId} (chat ${route.chatId}) failed: ${err.message}`);
@@ -157,13 +161,57 @@ async function temp(ctx, text, ms = config.EPHEMERAL_TTL_MS, extra = {}) {
 }
 
 // ---- screens ----------------------------------------------------------------
-// A tap edits the message the button sits on; anything else sends a new one.
-// Either way the user ends up looking at exactly one menu.
+// The rule: whatever happened last is at the bottom of the chat.
+//
+// A notification is the newest thing when it arrives, so it stays where it
+// lands and nothing is pushed under it — a buy in progress owns the bottom of
+// the chat for the whole ten seconds its message is being edited. Tapping a
+// button is then the newest thing, so the panel comes back down to meet it.
+//
+// Which means editing in place is only correct while the panel really is the
+// last message. Once anything has been sent below it, editing would answer the
+// tap somewhere the user is no longer looking, so the panel is re-sent at the
+// bottom and the stale copy removed.
+const lastIn = new Map(); // chatId -> highest message id seen in that chat
+
+function seen(chatId, messageId) {
+  if (!chatId || !messageId) return;
+  const key = String(chatId);
+  if ((lastIn.get(key) || 0) < Number(messageId)) lastIn.set(key, Number(messageId));
+}
+
+const isLast = (chatId, messageId) => Number(messageId) >= (lastIn.get(String(chatId)) || 0);
+
+async function remember(telegramId, chatId, messageId) {
+  if (!telegramId || !chatId || !messageId) return;
+  seen(chatId, messageId);
+  const wallet = require("./wallet");
+  await wallet.setMenuMessage(String(telegramId), chatId, messageId).catch(() => {});
+}
+
+// Draws the control panel so that it ends up as the last message in the chat.
+// `on` is the message a tap came from, when there was one.
 async function screen(ctx, text, state, extra = {}) {
   const options = { ...menu(state), ...extra };
   const on = ctx.callbackQuery && ctx.callbackQuery.message;
-  if (on && (await edit(ctx, on.chat.id, on.message_id, text, options))) return;
-  await send(ctx, ctx.chat.id, text, options);
+  const telegramId = ctx.from && ctx.from.id;
+
+  if (on && isLast(on.chat.id, on.message_id) && (await edit(ctx, on.chat.id, on.message_id, text, options))) {
+    return remember(telegramId, on.chat.id, on.message_id);
+  }
+
+  // Anything already showing the panel is stale the moment the new one lands:
+  // the message the tap came from, and whichever one was recorded before that.
+  const previous = telegramId
+    ? await require("./wallet").getMenuMessage(String(telegramId)).catch(() => null)
+    : null;
+  const m = await send(ctx, ctx.chat.id, text, options);
+  if (!m) return;
+  const stale = [on && { chatId: on.chat.id, msgId: on.message_id }, previous];
+  for (const old of stale) {
+    if (old && old.msgId && Number(old.msgId) !== m.message_id) await del(ctx, old.chatId, old.msgId);
+  }
+  return remember(telegramId, ctx.chat.id, m.message_id);
 }
 
 // Answering a callback query can fail when the tap is old; never abort on it.
@@ -171,4 +219,8 @@ async function ack(ctx, text) {
   try { await ctx.answerCbQuery(text); } catch { /* stale tap */ }
 }
 
-module.exports = { esc, html, menu, backOnly, banner, send, toUser, unreachable, edit, del, delLater, temp, screen, ack, api, RULE };
+module.exports = {
+  esc, html, menu, backOnly, banner,
+  send, toUser, unreachable, edit, del, delLater, temp, screen, ack, api, RULE,
+  remember, seen, isLast,
+};

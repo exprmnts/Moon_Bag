@@ -112,6 +112,24 @@ function forgetChat(telegramId) {
   routes.delete(telegramId);
 }
 
+// ---- where the control panel is ------------------------------------------------
+// One message with the buttons on it, edited in place. Remembering which one
+// lets the bot delete it and re-send it at the bottom when notifications have
+// pushed it up the chat.
+async function setMenuMessage(telegramId, chatId, msgId) {
+  await db.query("update users set menu_chat_id = $2, menu_msg_id = $3 where telegram_id = $1", [
+    telegramId,
+    chatId == null ? null : String(chatId),
+    msgId == null ? null : Number(msgId),
+  ]);
+}
+
+async function getMenuMessage(telegramId) {
+  const row = await db.one("select menu_chat_id, menu_msg_id from users where telegram_id = $1", [telegramId]);
+  if (!row || row.menu_msg_id == null) return null;
+  return { chatId: row.menu_chat_id, msgId: Number(row.menu_msg_id) };
+}
+
 // Decrypts the user's key and returns a viem account for signing.
 async function getAccount(telegramId) {
   const row = await db.one("select key_iv, key_ct, key_tag from users where telegram_id = $1", [telegramId]);
@@ -218,6 +236,8 @@ module.exports = {
   getChatId,
   markUnreachable,
   forgetChat,
+  setMenuMessage,
+  getMenuMessage,
   createUserWalletIfMissing,
   getAccount,
   exportPrivateKey,

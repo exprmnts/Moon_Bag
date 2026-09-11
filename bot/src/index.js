@@ -82,6 +82,9 @@ bot.use(async (ctx, next) => {
       // True only when this update un-muted someone the bot had given up on.
       const recovered = await wallet.rememberChat(String(ctx.from.id), ctx.chat.id);
       if (recovered) log.info(`${ctx.from.id} can be messaged again (chat ${ctx.chat.id})`);
+      // A message the user sent is below the panel too, so it counts towards
+      // deciding whether the panel is still the last thing in the chat.
+      if (ctx.message) ui.seen(ctx.chat.id, ctx.message.message_id);
     }
   } catch (err) {
     log.error(`rememberChat: ${err.message}`);
@@ -124,11 +127,9 @@ async function showMain(ctx, note) {
   await ui.screen(ctx, await dashboard(state, note), state);
 }
 
-// A fresh dashboard below whatever else is in the chat (after a typed answer).
-async function sendMain(ctx, note) {
-  const state = await stateOf(uid(ctx));
-  await ui.send(ctx, ctx.chat.id, await dashboard(state, note), ui.menu(state));
-}
+// After a typed answer there is no message to edit, so ui.screen sends a fresh
+// panel and clears away the old one. Same function either way.
+const sendMain = showMain;
 
 // ---- questions ------------------------------------------------------------------
 // Asking replaces any question already on screen, so exactly one is ever open.
@@ -188,14 +189,14 @@ bot.start(
   guard("/start", async (ctx) => {
     await wallet.setAwaiting(uid(ctx), null);
     const state = await stateOf(uid(ctx));
-    await ui.send(ctx, ctx.chat.id, state.hasWallet ? await dashboard(state) : WELCOME, ui.menu(state));
+    await ui.screen(ctx, state.hasWallet ? await dashboard(state) : WELCOME, state);
   })
 );
 
 bot.help(
   guard("/help", async (ctx) => {
     const state = await stateOf(uid(ctx));
-    await ui.send(ctx, ctx.chat.id, HELP, ui.menu(state));
+    await ui.screen(ctx, HELP, state);
   })
 );
 

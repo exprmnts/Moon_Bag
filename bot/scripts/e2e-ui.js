@@ -10,8 +10,9 @@
 // whether a wallet exists, that a question and its answer are deleted, that the
 // private key is scheduled for deletion, that a failing buy is retried exactly
 // MAX_BUY_ATTEMPTS times and then alerts, and that a user Telegram refuses to
-// deliver to is muted once instead of being retried for every message, and that
-// the WSS callback runs without crashing.
+// deliver to is muted once instead of being retried for every message, that the
+// WSS callback runs without crashing, and that the control panel follows the
+// conversation to the bottom.
 process.env.LOG_LEVEL ||= "warn"; // the bot's own logging is not what is under test
 process.env.DATABASE_URL ||= "postgres://moonbag:moonbag@localhost:55432/moonbag?sslmode=disable";
 process.env.TELEGRAM_BOT_TOKEN ||= "test:token";
@@ -642,6 +643,58 @@ async function clean() {
   check("a Transfer touching a watched wallet does not crash the process", () =>
     assert.equal(crashed, null, crashed && crashed.message)
   );
+
+  // ---- 14. whatever happened last is at the bottom ------------------------------------
+  // Two halves of one rule. A notification is the newest thing when it arrives,
+  // so nothing is pushed underneath it — a buy in progress owns the bottom of
+  // the chat for the whole time its message is being edited. A tap is then the
+  // newest thing, so the panel comes back down rather than being edited in
+  // place up the scrollback where the user cannot see the answer.
+  console.log("\n14. whatever happened last is at the bottom");
+  await wallet.setAwaiting(USER, null);
+  await tap("BACK_TO_MAIN");
+  const panelAt = await wallet.getMenuMessage(USER);
+  check("the panel's message is remembered", () => assert.ok(panelAt && panelAt.msgId, "no menu message recorded"));
+
+  // A tap while the panel is still last: edited in place, no new message.
+  n = since();
+  screenMsgId = panelAt.msgId;
+  await tap("SHOW_ADDRESS");
+  check("a tap on the last message edits it in place", () => {
+    assert.equal(editsSince(n).length, 1, "it did not edit");
+    assert.equal(sentSince(n).length, 0, "it sent a new message instead of editing");
+  });
+
+  // Now a notification lands underneath it. It must stay put: it is the newest.
+  n = since();
+  const note = await ui.toUser(bot, USER, "🚨 <b>Sell detected</b>");
+  check("a notification does not move the panel", async () => {});
+  assert.equal((await wallet.getMenuMessage(USER)).msgId, panelAt.msgId, "the panel moved on its own");
+  check("nothing is sent under a fresh notification", () =>
+    assert.equal(sentSince(n).length, 1, `sent ${sentSince(n).length} messages, expected just the notification`)
+  );
+
+  // The next tap is the newest thing, so the panel comes down to the bottom.
+  n = since();
+  await tap("BACK_TO_MAIN");
+  const movedTo = await wallet.getMenuMessage(USER);
+  check("the next tap brings the panel to the bottom", () => {
+    assert.ok(movedTo.msgId > note.message_id, `panel ${movedTo.msgId} is not below the notification ${note.message_id}`);
+    assert.equal(sentSince(n).length, 1, "the panel was not re-sent");
+  });
+  check("the stranded panel is deleted, not left showing a stale state", () =>
+    assert.ok(deletesSince(n).some((c) => Number(c.payload.message_id) === panelAt.msgId), "the old panel survived")
+  );
+
+  // And once it is back at the bottom, taps edit in place again.
+  n = since();
+  screenMsgId = movedTo.msgId;
+  await tap("SHOW_WATCH");
+  check("taps edit in place again once it is last", () => {
+    assert.equal(editsSince(n).length, 1);
+    assert.equal(sentSince(n).length, 0);
+  });
+  await tap("BACK_TO_MAIN");
 
   // ---- done ------------------------------------------------------------------------
   await clean();
