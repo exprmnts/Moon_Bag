@@ -8,6 +8,7 @@
 const config = require("./config");
 const executor = require("./executor");
 const alerts = require("./services/alerts");
+const log = require("./log").scope("retry");
 
 let timer = null;
 let running = false;
@@ -51,7 +52,7 @@ function start(bot) {
   if (timer) return;
   timer = setInterval(() => { tick().catch(() => {}); }, config.RETRY_TICK_MS);
   if (timer.unref) timer.unref();
-  console.log(`[retry] worker every ${config.RETRY_TICK_MS / 1000}s, up to ${config.MAX_BUY_ATTEMPTS} attempts per buy`);
+  log.info(`worker every ${config.RETRY_TICK_MS / 1000}s, up to ${config.MAX_BUY_ATTEMPTS} attempts per buy`);
 }
 
 function stop() {

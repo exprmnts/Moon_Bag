@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const { Pool } = require("pg");
 const config = require("../config");
+const log = require("../log").scope("db");
 
 // Neon strings carry sslmode=require; pg warns about it, so we strip the
 // parameter and ask for a verified TLS connection explicitly. A local Postgres
@@ -22,7 +23,7 @@ const pool = new Pool({
 });
 
 pool.on("error", (err) => {
-  console.error("[db] idle client error", err.message);
+  log.error(`idle client error: ${err.message}`);
 });
 
 async function ensureSchema() {

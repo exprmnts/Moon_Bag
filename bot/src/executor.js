@@ -28,9 +28,16 @@ const alerts = require("./services/alerts");
 const errors = require("./errors");
 const ui = require("./ui");
 const fee = require("./fee");
+const log = require("./log").scope("executor");
 
 const esc = ui.esc;
 const ACTIVE = ["queued", "retrying"];
+
+// Logs name the user and the token, not the whole sell key: the key is 100
+// characters of provenance that belongs in the database, and repeating it on
+// every line made a working buy unreadable.
+const tag = (trade) => `${trade.telegram_id} ${alchemy.shortAddress(trade.token)}`;
+const shortHash = (hash) => `${String(hash).slice(0, 10)}…${String(hash).slice(-6)}`;
 
 // ---- the row ------------------------------------------------------------------
 async function getTrade(sellKey) {
@@ -160,8 +167,11 @@ async function assertFunded(publicClient, address, value, gas) {
 
 // ---- one attempt -------------------------------------------------------------------
 // Runs a single buy attempt for an already-claimed row. Throws on failure; the
-// caller decides between a retry and a final failure.
-async function attemptOnce(bot, trade, label, fmt) {
+// caller decides between a retry and a final failure. `view` is how this token
+// is written: { label } for Telegram (HTML-escaped), { name } for the log,
+// { fmt } for raw amounts.
+async function attemptOnce(bot, trade, view) {
+  const { label } = view;
   const telegramId = trade.telegram_id;
   const token = trade.token;
   const ethIn = BigInt(trade.eth_in_wei);
@@ -184,8 +194,8 @@ async function attemptOnce(bot, trade, label, fmt) {
       .waitForTransactionReceipt({ hash: trade.buy_tx_hash, timeout: 60_000 })
       .catch(() => null);
     if (!prior) throw errors.tagged("RECEIPT_TIMEOUT", `still waiting on ${trade.buy_tx_hash}`);
-    if (prior.status === "success") return settle(bot, trade, prior, trade.buy_tx_hash, label, fmt, ethText);
-    console.log(`[executor] ${trade.sell_key}: previous tx ${trade.buy_tx_hash} reverted, quoting again`);
+    if (prior.status === "success") return settle(bot, trade, prior, trade.buy_tx_hash, view, ethText);
+    log.info(`${tag(trade)} previous tx ${shortHash(trade.buy_tx_hash)} reverted, quoting again`);
     await db.query("update trades set buy_tx_hash = null where sell_key = $1", [trade.sell_key]);
     trade.buy_tx_hash = null;
   }
@@ -198,25 +208,27 @@ async function attemptOnce(bot, trade, label, fmt) {
 
   const tx = await uniswap.swap(q);
   const { gas, estimated, fromApi } = await gasFor(publicClient, account, tx);
-  if (fromApi && estimated > fromApi) {
-    console.warn(`[executor] ${trade.sell_key}: Uniswap gasLimit ${fromApi} below estimate ${estimated}; sending ${gas}`);
-  }
+  // The API's gasLimit being too low is the normal case on this chain, not an
+  // event: it is why gasFor exists. Only the arithmetic is interesting, and only
+  // when you are looking for it.
+  log.debug(`${tag(trade)} gas ${gas} (estimated ${estimated}, Uniswap said ${fromApi || "nothing"})`);
   await assertFunded(publicClient, account.address, BigInt(tx.value || 0), gas);
 
   const client = alchemy.walletClient(account);
   const hash = await client.sendTransaction({ to: tx.to, value: BigInt(tx.value || 0), data: tx.data, gas });
-  console.log(`[executor] ${trade.sell_key} sent ${hash} (gas ${gas})`);
+  log.info(`${tag(trade)} buying ${view.name} for ${ethText} ETH · gas ${gas} · ${shortHash(hash)}`);
   await db.query("update trades set buy_tx_hash = $2, updated_at = now() where sell_key = $1", [trade.sell_key, hash]);
   trade.buy_tx_hash = hash;
   await screen(bot, trade, `⏳ <b>Buying ${label}</b>\n${head(label, token)}\n\nSpending ${ethText} ETH · waiting for the swap to confirm…`);
 
   const receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: 120_000 });
   if (receipt.status !== "success") throw errors.tagged("REVERTED", `Transaction reverted (${hash})`);
-  return settle(bot, trade, receipt, hash, label, fmt, ethText);
+  return settle(bot, trade, receipt, hash, view, ethText);
 }
 
 // A confirmed receipt: record what actually moved and tell the user.
-async function settle(bot, trade, receipt, hash, label, fmt, ethText) {
+async function settle(bot, trade, receipt, hash, view, ethText) {
+  const { label, name, fmt } = view;
   const feeOn = config.feeEnabled;
   // What actually moved beats what was quoted; the quoted values already on the
   // row are the fallback when no Transfer log matched.
@@ -228,7 +240,11 @@ async function settle(bot, trade, receipt, hash, label, fmt, ethText) {
 
   await setFee(trade.sell_key, { feeAmount, tokensOut });
   await finish(trade.sell_key, "confirmed", { hash });
-  if (feeOn && feeAmount != null) console.log(`[executor] ${trade.sell_key} fee ${feeAmount} of ${trade.token} → ${config.treasury}`);
+  // The whole outcome on one line: what the user got, what the treasury got.
+  log.info(
+    `${tag(trade)} confirmed ${shortHash(hash)} · +${tokensOut == null ? "?" : fmt(tokensOut)} ${name}` +
+      (feeOn && feeAmount != null ? ` · fee ${fmt(feeAmount)} → treasury` : "")
+  );
 
   const received = tokensOut != null ? `<b>+${fmt(tokensOut)} ${label}</b>` : `<b>${label}</b>`;
   let text = `🌕 <b>Moonbag secured</b>\n${head(label, trade.token)}\n\n${received}\nSpent ${ethText} ETH`;
@@ -247,8 +263,9 @@ async function attempt(bot, sellKey, { from = ACTIVE } = {}) {
   if (!trade) return { status: "skipped" };
 
   const meta = await alchemy.getTokenMeta(trade.token).catch(() => ({ symbol: null, decimals: null }));
-  const label = meta.symbol ? esc(meta.symbol) : alchemy.shortAddress(trade.token);
-  const fmt = (amount) => alchemy.formatAmount(amount, meta.decimals);
+  const name = meta.symbol || alchemy.shortAddress(trade.token);
+  const view = { label: meta.symbol ? esc(meta.symbol) : name, name, fmt: (a) => alchemy.formatAmount(a, meta.decimals) };
+  const { label } = view;
   const ethText = formatEther(BigInt(trade.eth_in_wei));
   const soldFrom = sourceOf(trade.sell_key);
 
@@ -272,12 +289,16 @@ async function attempt(bot, sellKey, { from = ACTIVE } = {}) {
   }
 
   try {
-    return await attemptOnce(bot, trade, label, fmt);
+    return await attemptOnce(bot, trade, view);
   } catch (err) {
     const cls = errors.classify(err);
     const attempts = trade.attempts; // already incremented by claim()
     const willRetry = cls.retryable && errors.canRetry(attempts);
-    console.error(`[executor] ${sellKey} attempt ${attempts}/${config.MAX_BUY_ATTEMPTS} failed [${cls.code}]: ${cls.detail}`);
+    const line = `${tag(trade)} attempt ${attempts}/${config.MAX_BUY_ATTEMPTS} failed [${cls.code}]: ${cls.detail}`;
+    // A failure that will be retried is not yet a failure; only the last one is.
+    if (willRetry) log.warn(line);
+    else log.error(line);
+    log.debug(`${tag(trade)} sell key ${sellKey}`);
 
     // A hash is only kept when the transaction may still be out there; keeping
     // it otherwise would make the next attempt wait on a receipt forever.
@@ -327,7 +348,9 @@ async function buy(bot, telegramId, token, sellKey, { chatId = null, statusMsgId
     if (!user) return { status: "failed", queued: false, code: "NO_WALLET", error: "no user" };
     const { queued, trade } = await queue(telegramId, token, sellKey, user.buyAmountWei, { chatId, statusMsgId });
     if (!queued) {
-      console.log(`[executor] ${sellKey} already recorded (${trade ? trade.status : "gone"}), skipping`);
+      // The WSS event and the poll both seeing one sell. Working as intended,
+      // several times per buy, so it is not news.
+      log.debug(`${sellKey} already recorded (${trade ? trade.status : "gone"}), skipping`);
       return { status: "skipped", queued: false };
     }
     const result = await attempt(bot, sellKey, { from: ["queued"] });
@@ -358,7 +381,7 @@ async function reclaimStranded(olderThanMs = config.STRANDED_AFTER_MS) {
      where status = 'pending' and updated_at < now() - ($1 || ' milliseconds')::interval`,
     [String(olderThanMs)]
   );
-  if (rowCount) console.log(`[executor] re-queued ${rowCount} stranded buy(s)`);
+  if (rowCount) log.info(`re-queued ${rowCount} stranded buy(s)`);
   return rowCount;
 }
 

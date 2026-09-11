@@ -16,6 +16,15 @@ if (!["mainnet", "testnet"].includes(CHAIN_NAME)) {
   throw new Error(`CHAIN must be "mainnet" or "testnet", got "${CHAIN_NAME}"`);
 }
 
+// How much reaches the console. `info` is the smooth path: state changes only.
+// `debug` adds every trigger, every skip and the arithmetic behind a decision.
+// See src/log.js.
+const LOG_LEVELS = ["debug", "info", "warn", "error", "silent"];
+const LOG_LEVEL = (process.env.LOG_LEVEL || "info").toLowerCase();
+if (!LOG_LEVELS.includes(LOG_LEVEL)) {
+  throw new Error(`LOG_LEVEL must be one of ${LOG_LEVELS.join(", ")}, got "${LOG_LEVEL}"`);
+}
+
 const IS_MAINNET = CHAIN_NAME === "mainnet";
 const ALCHEMY_API_KEY = required("ALCHEMY_API_KEY");
 const ALCHEMY_NETWORK = IS_MAINNET ? "robinhood-mainnet" : "robinhood-testnet";
@@ -65,6 +74,7 @@ const config = {
 
   dryRun: String(process.env.DRY_RUN ?? "true").toLowerCase() !== "false",
   port: Number(process.env.PORT || 3000),
+  logLevel: LOG_LEVEL,
 
   treasury, // checksummed, or null (testnet only)
   FEE_BIPS, // basis points of the tokens bought, 100 = 1%; Uniswap allows at most 500

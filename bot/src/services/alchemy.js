@@ -3,6 +3,7 @@
 const { createPublicClient, createWalletClient, http, webSocket, getAddress, formatUnits } = require("viem");
 const config = require("../config");
 const db = require("./db");
+const log = require("../log").scope("alchemy");
 
 const ERC20_META_ABI = [
   { type: "function", name: "symbol", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
@@ -103,7 +104,7 @@ async function getTokenMeta(tokenAddress) {
     metaCache.set(address, meta);
     return meta;
   } catch (err) {
-    console.warn(`[alchemy] token metadata failed for ${address}: ${err.shortMessage || err.message}`);
+    log.debug(`token metadata failed for ${address}: ${err.shortMessage || err.message}`);
     const miss = { symbol: null, decimals: null, until: Date.now() + META_RETRY_MS };
     metaCache.set(address, miss);
     return miss;

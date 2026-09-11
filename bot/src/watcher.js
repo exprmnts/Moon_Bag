@@ -11,6 +11,7 @@ const { decide } = require("./decide");
 const executor = require("./executor");
 const alerts = require("./services/alerts");
 const ui = require("./ui");
+const log = require("./log").scope("watcher");
 
 const TRANSFER = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -163,7 +164,10 @@ const FAILURES_BEFORE_ALERT = 3;
 function noteFailure(row, err) {
   const n = (failures.get(row.id) || 0) + 1;
   failures.set(row.id, n);
-  console.error(`[watcher] check ${row.address} for ${row.telegram_id} failed (${n}): ${err.shortMessage || err.message}`);
+  // One failure is the RPC blinking; keep it out of the way until it repeats.
+  const line = `check ${row.address} for ${row.telegram_id} failed (${n}): ${err.shortMessage || err.message}`;
+  if (n < FAILURES_BEFORE_ALERT) log.debug(line);
+  else log.error(line);
   if (n === FAILURES_BEFORE_ALERT) {
     alerts
       .notifyDev("Watched wallet keeps failing its check", {
@@ -188,8 +192,10 @@ function onLogs(logs) {
       if (entry.timer) clearTimeout(entry.timer);
       entry.timer = setTimeout(() => {
         debounces.delete(address);
-        console.log(`[watcher] transfer touching ${address} at block ${entry.blockNumber}`);
-        checkWatchedAddress(address, entry.blockNumber).catch((e) => console.error("[watcher] event check", e.message));
+        // Most transfers touching a watched wallet are not sells, and the ones
+        // that are announce themselves through the executor. Debug.
+        log.debug(`transfer touching ${address} at block ${entry.blockNumber}`);
+        checkWatchedAddress(address, entry.blockNumber).catch((e) => log.error(`event check: ${e.message}`));
       }, config.EVENT_DEBOUNCE_MS);
       debounces.set(address, entry);
     }
@@ -197,7 +203,7 @@ function onLogs(logs) {
 }
 
 function onWsError(err) {
-  if (subs.healthy) console.error(`[watcher] WSS error, relying on the poll until rebuilt: ${err.shortMessage || err.message}`);
+  if (subs.healthy) log.warn(`WSS error, relying on the poll until rebuilt: ${err.shortMessage || err.message}`);
   subs.healthy = false;
 }
 
@@ -227,7 +233,7 @@ async function rebuildSubscriptions() {
     subs.unwatch.push(client.watchEvent({ event: TRANSFER, args: { from: checksummed }, onLogs, onError: onWsError }));
     subs.unwatch.push(client.watchEvent({ event: TRANSFER, args: { to: checksummed }, onLogs, onError: onWsError }));
     subs.healthy = true;
-    console.log(`[watcher] WSS subscriptions rebuilt for ${addresses.length} address(es)`);
+    log.info(`WSS subscriptions rebuilt for ${addresses.length} address(es)`);
   } catch (err) {
     subs.healthy = false;
     // Not fatal: the 60-second poll is the backstop and pollOnce retries this
@@ -304,7 +310,7 @@ async function startWatcher(bot, telegramId) {
       try { await checkAddress(bot, telegramId, w); } catch (err) { noteFailure(w, err); }
     }
   })().catch((err) => alerts.swallow("watcher.initialPass", err, { telegramId }));
-  console.log(`[watcher] started for ${telegramId} (${watched.length} wallet(s))`);
+  log.info(`started for ${telegramId} (${watched.length} wallet(s))`);
   return { watched: watched.length, lowBalance };
 }
 
@@ -316,7 +322,7 @@ async function stopWatcher(telegramId) {
     [telegramId]
   );
   await rebuildSubscriptions();
-  console.log(`[watcher] stopped for ${telegramId}`);
+  log.info(`stopped for ${telegramId}`);
 }
 
 // At boot: re-register everyone whose watcher was on, without the balance check.
@@ -326,7 +332,7 @@ async function resumeWatchers(bot) {
   for (const r of rows) watchers.set(r.telegram_id, { since: Date.now() });
   ensurePoll();
   await rebuildSubscriptions();
-  console.log(`[watcher] resumed ${rows.length} watcher(s)`);
+  log.info(`resumed ${rows.length} watcher(s)`);
   return rows.length;
 }
 

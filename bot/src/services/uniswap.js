@@ -9,6 +9,7 @@
 // giving up. Persistent failures still throw, and executor.js counts those.
 const config = require("../config");
 const fee = require("../fee");
+const log = require("../log").scope("uniswap");
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -54,7 +55,8 @@ async function post(path, body) {
       const retryable = err.status == null ? true : err.retryable;
       if (!retryable || attempt === config.UNISWAP_RETRIES) break;
       const wait = 700 * (attempt + 1) + Math.floor(Math.random() * 300);
-      console.warn(`[uniswap] ${path} ${err.message.slice(0, 120)} — retrying in ${wait}ms`);
+      // The router timing out and recovering is not an incident.
+      log.debug(`${path} ${err.message.slice(0, 120)} — retrying in ${wait}ms`);
       await sleep(wait);
     }
   }

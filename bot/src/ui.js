@@ -15,6 +15,7 @@
 // handler.
 const { Markup } = require("telegraf");
 const config = require("./config");
+const log = require("./log").scope("ui");
 
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const html = (extra = {}) => ({ parse_mode: "HTML", link_preview_options: { is_disabled: true }, ...extra });
@@ -64,7 +65,7 @@ async function send(botOrCtx, chatId, text, extra = {}) {
   try {
     return await api(botOrCtx).sendMessage(chatId, text, html(extra));
   } catch (err) {
-    console.error(`[ui] send to ${chatId} failed: ${err.message}`);
+    log.error(`send to ${chatId} failed: ${err.message}`);
     return null;
   }
 }
@@ -96,7 +97,7 @@ async function toUser(botOrCtx, telegramId, text, extra = {}) {
         }, { key: `unreachable:${telegramId}` })
         .catch(() => {});
     } else {
-      console.error(`[ui] send to ${telegramId} (chat ${chatId}) failed: ${err.message}`);
+      log.error(`send to ${telegramId} (chat ${chatId}) failed: ${err.message}`);
     }
     return null;
   }

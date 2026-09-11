@@ -18,6 +18,8 @@ const alchemy = require("./services/alchemy");
 const alerts = require("./services/alerts");
 const ui = require("./ui");
 const executor = require("./executor");
+const log = require("./log").scope("bot");
+const boot = require("./log").scope("boot");
 
 const fee = require("./fee");
 
@@ -78,7 +80,7 @@ bot.use(async (ctx, next) => {
   try {
     if (ctx.from && !ctx.from.is_bot && ctx.chat) await wallet.rememberChat(String(ctx.from.id), ctx.chat.id);
   } catch (err) {
-    console.error(`[bot] rememberChat: ${err.message}`);
+    log.error(`rememberChat: ${err.message}`);
   }
   return next();
 });
@@ -394,7 +396,7 @@ action("SHOW_POSITIONS", async (ctx) => {
       const tokens = await alchemy.getTokenBalances(w.address);
       text += tokens.length ? `${await tokenLines(tokens, 6)}\n` : "<i>no tokens</i>\n";
     } catch (err) {
-      console.error(`[bot] positions ${w.address}: ${err.message}`);
+      log.warn(`positions ${w.address}: ${err.message}`);
       text += "<i>could not read this wallet just now</i>\n";
     }
   }
@@ -531,7 +533,7 @@ async function warnIfTreasuryWatched() {
       });
     }
   } catch (err) {
-    console.warn(`[boot] treasury check skipped: ${err.message}`);
+    boot.warn(`treasury check skipped: ${err.message}`);
   }
 }
 
@@ -557,39 +559,39 @@ function startHttp() {
     }
     res.end("Moonbag bot is alive 👍");
   });
-  server.listen(config.port, () => console.log(`[http] listening on ${config.port}`));
+  server.listen(config.port, () => log.info(`http listening on ${config.port}`));
   return server;
 }
 
 async function main() {
   await db.ensureSchema();
-  console.log(`[boot] schema ok; chain=${config.chainName} (${config.chainId}) dryRun=${config.dryRun} fee=${config.feeEnabled ? `${config.FEE_BIPS}bps→${config.treasury}` : "off"}`);
+  boot.info(`schema ok; chain=${config.chainName} (${config.chainId}) dryRun=${config.dryRun} fee=${config.feeEnabled ? `${config.FEE_BIPS}bps→${config.treasury}` : "off"}`);
   alerts.use(bot);
   await warnIfTreasuryWatched();
-  if (!config.adminChatId) console.warn("[boot] ADMIN_CHAT_ID is not set: failures will only reach the logs");
+  if (!config.adminChatId) boot.warn("ADMIN_CHAT_ID is not set: failures will only reach the logs");
   const server = startHttp();
 
   // launch() only resolves when polling stops, so the rest happens in the callback.
   bot
     .launch({ dropPendingUpdates: false }, () => {
-      console.log(`[boot] @${bot.botInfo.username} is polling`);
+      boot.info(`@${bot.botInfo.username} is polling (log level ${config.logLevel})`);
       bot.telegram
         .setMyCommands([
           { command: "start", description: "Your moonbag dashboard" },
           { command: "help", description: "How MoonBag works" },
           { command: "retry", description: "Try my failed buys again" },
         ])
-        .catch((err) => console.warn(`[boot] setMyCommands: ${err.message}`));
+        .catch((err) => boot.warn(`setMyCommands: ${err.message}`));
       retry.start(bot);
       watcher.resumeWatchers(bot).catch((err) => alerts.swallow("boot.resumeWatchers", err));
     })
     .catch((err) => {
-      console.error("[boot] launch failed", err);
+      boot.error("launch failed", err);
       process.exit(1);
     });
 
   const stop = (signal) => {
-    console.log(`[boot] ${signal}, shutting down`);
+    boot.info(`${signal}, shutting down`);
     try { bot.stop(signal); } catch { /* not launched */ }
     watcher.shutdown();
     retry.stop();
@@ -603,7 +605,7 @@ async function main() {
 
 if (require.main === module) {
   main().catch((err) => {
-    console.error("[boot] fatal", err);
+    boot.error("fatal", err);
     process.exit(1);
   });
 }
