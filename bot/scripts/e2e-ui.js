@@ -696,6 +696,22 @@ async function clean() {
   });
   await tap("BACK_TO_MAIN");
 
+  // ---- 15. the toggle says it once -------------------------------------------------------
+  // It used to print the note and the banner, which said the same sentence twice.
+  console.log("\n15. turning moonbags on");
+  ethBalance = 10n ** 18n;
+  tokenBalances = [];
+  n = since();
+  await tap("START_WATCH");
+  check("the dashboard states the status exactly once", () => {
+    const dash = screensSince(n).filter((c) => /🌑 <b>MoonBag<\/b>/.test(c.payload.text)).at(-1);
+    assert.ok(dash, "no dashboard was drawn");
+    const said = dash.payload.text.split("\n").filter((l) => /Moonbags on/i.test(l));
+    assert.equal(said.length, 1, `said it ${said.length} times:\n${dash.payload.text}`);
+  });
+  await tap("STOP_WATCH");
+  watcher.shutdown();
+
   // ---- done ------------------------------------------------------------------------
   await clean();
   await db.pool.end();

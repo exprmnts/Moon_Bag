@@ -426,10 +426,13 @@ async function tokenLines(balances, limit) {
 action("START_WATCH", async (ctx) => {
   await ui.ack(ctx, "Starting…");
   try {
-    const { watched, lowBalance } = await watcher.startWatcher(bot, uid(ctx));
-    let note = `🟢 <b>Moonbags on.</b> Watching ${watched} wallet${watched === 1 ? "" : "s"}.`;
-    if (lowBalance) note += `\n⚠️ Your bot wallet holds less than one buy amount — top it up or buys will be skipped.`;
-    await showMain(ctx, note);
+    const { lowBalance } = await watcher.startWatcher(bot, uid(ctx));
+    // No note saying "Moonbags on. Watching 1 wallet." — the banner on the very
+    // next line already says exactly that, and printing both said it twice.
+    await showMain(
+      ctx,
+      lowBalance ? "⚠️ Your bot wallet holds less than one buy amount — top it up or buys will be skipped." : null
+    );
   } catch (err) {
     const known = {
       NO_WALLET: NEED_WALLET,
@@ -444,7 +447,8 @@ action("START_WATCH", async (ctx) => {
 action("STOP_WATCH", async (ctx) => {
   await ui.ack(ctx, "Pausing…");
   await watcher.stopWatcher(uid(ctx));
-  await showMain(ctx, "⚪️ <b>Moonbags paused.</b> Nothing is being watched until you turn it back on.");
+  // Same here: the banner reads "⚪️ Moonbags off · N wallets ready".
+  await showMain(ctx);
 });
 
 // ---- typed answers ----------------------------------------------------------------------------
