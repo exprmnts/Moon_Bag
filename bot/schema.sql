@@ -47,6 +47,17 @@ alter table trades add column if not exists fee_bips      int;      -- fee reque
 alter table trades add column if not exists fee_recipient text;     -- treasury address the fee went to
 alter table trades add column if not exists fee_amount    numeric;  -- raw token units to the treasury (quoted, then actual from the receipt)
 alter table trades add column if not exists tokens_out    numeric;  -- raw token units to the user (same rule)
+-- Retries (2026-09-11): a buy that fails for a transient reason is retried in the
+-- background up to config.MAX_BUY_ATTEMPTS times instead of being abandoned, and
+-- the user watches one message change rather than receiving one per attempt.
+alter table trades add column if not exists attempts       int not null default 0;  -- attempts finished so far
+alter table trades add column if not exists next_retry_at  timestamptz;             -- when status = 'retrying'
+alter table trades add column if not exists error_code     text;                    -- errors.js code of the last failure
+alter table trades add column if not exists chat_id        text;                    -- chat holding the status message
+alter table trades add column if not exists status_msg_id  bigint;                  -- message edited in place
+alter table trades add column if not exists updated_at     timestamptz default now();
+create index if not exists trades_due_idx on trades (status, next_retry_at);
+create index if not exists trades_user_idx on trades (telegram_id, created_at desc);
 
 create table if not exists tokens (
   address     text primary key,
