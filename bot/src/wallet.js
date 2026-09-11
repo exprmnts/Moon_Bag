@@ -3,7 +3,7 @@
 const { isAddress, parseEther, getAddress } = require("viem");
 const { generatePrivateKey, privateKeyToAccount } = require("viem/accounts");
 const db = require("./services/db");
-const { encryptSecret, decryptSecret } = require("./services/crypto");
+const { encryptSecret, decryptSecret, masterKeyFingerprint } = require("./services/crypto");
 const config = require("./config");
 
 function rowToUser(row) {
@@ -138,6 +138,35 @@ async function getAccount(telegramId) {
   return privateKeyToAccount(privateKey);
 }
 
+// ---- does this process hold the right master key? ------------------------------
+// A wallet is sealed under MASTER_ENCRYPTION_KEY at creation and can only be
+// opened by the same one, so a deploy carrying the wrong key cannot sign for
+// anyone — and says nothing about it until the first buy dies. That is exactly
+// what happened on 2026-09-11: the key in Railway was not the key the wallets
+// were written with, and the only symptom was two users' buys failing with six
+// words of node crypto prose. This turns that into a failed boot.
+//
+// Checks the most recent wallets rather than all of them: a wrong key fails on
+// every row, and a key changed mid-life shows up in the newest ones first.
+const KEY_CHECK_SAMPLE = 200;
+
+async function checkMasterKey() {
+  const rows = await db.many(
+    `select key_iv, key_ct, key_tag from users where key_ct is not null order by created_at desc limit ${KEY_CHECK_SAMPLE}`
+  );
+  let opened = 0;
+  const failed = [];
+  for (const row of rows) {
+    try {
+      decryptSecret({ iv: row.key_iv, ct: row.key_ct, tag: row.key_tag });
+      opened += 1;
+    } catch {
+      failed.push(row);
+    }
+  }
+  return { checked: rows.length, opened, failed: failed.length, fingerprint: masterKeyFingerprint() };
+}
+
 // The raw private key, for the Export Key button only.
 async function exportPrivateKey(telegramId) {
   const row = await db.one("select key_iv, key_ct, key_tag from users where telegram_id = $1", [telegramId]);
@@ -239,6 +268,7 @@ module.exports = {
   setMenuMessage,
   getMenuMessage,
   createUserWalletIfMissing,
+  checkMasterKey,
   getAccount,
   exportPrivateKey,
   setBuyAmount,

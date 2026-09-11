@@ -572,10 +572,46 @@ function startHttp() {
   return server;
 }
 
+// A wrong MASTER_ENCRYPTION_KEY is invisible until someone tries to buy: every
+// wallet is sealed under the key that created it, so the wrong one signs for
+// nobody while the bot looks perfectly healthy. Refusing to boot turns a silent
+// deploy into a loud one, and an operator reads the fingerprint to see which key
+// this process actually loaded.
+async function assertMasterKeyOpensWallets() {
+  const { checked, opened, failed, fingerprint } = await wallet.checkMasterKey();
+  if (!checked) {
+    boot.info(`master key ${fingerprint}; no wallets yet to check it against`);
+    return;
+  }
+  if (!failed) {
+    boot.info(`master key ${fingerprint} opens all ${checked} wallet(s)`);
+    return;
+  }
+  await alerts.notifyDev(
+    "Boot refused: wrong MASTER_ENCRYPTION_KEY",
+    {
+      fingerprint,
+      wallets: checked,
+      opened,
+      failed,
+      meaning:
+        opened === 0
+          ? "this key opens none of them — the environment is running the wrong key"
+          : "some wallets were sealed under a different key; both keys are needed to re-encrypt",
+    },
+    { key: "boot.masterKey" }
+  );
+  boot.error(
+    `master key ${fingerprint} cannot open ${failed} of ${checked} wallet(s); refusing to start so nothing signs for the wrong people`
+  );
+  process.exit(1);
+}
+
 async function main() {
   await db.ensureSchema();
   boot.info(`schema ok; chain=${config.chainName} (${config.chainId}) dryRun=${config.dryRun} fee=${config.feeEnabled ? `${config.FEE_BIPS}bps→${config.treasury}` : "off"}`);
   alerts.use(bot);
+  await assertMasterKeyOpensWallets();
   await warnIfTreasuryWatched();
   if (!config.adminChatId) boot.warn("ADMIN_CHAT_ID is not set: failures will only reach the logs");
   const server = startHttp();

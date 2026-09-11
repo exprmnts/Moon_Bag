@@ -133,9 +133,26 @@ Amounts are `bigint` in code and `numeric` in Postgres. Never `Number()` a wei v
 ## 5. Boot and shutdown (`index.js` `main`)
 
 1. `db.ensureSchema()` runs `schema.sql` (all `create ... if not exists`).
-2. HTTP server starts; `/health` returns `{ ok, chain, chainId, dryRun, watchers, wss, addresses }`.
-3. `bot.launch()` with a callback. The promise only resolves when polling stops, so the callback is where `watcher.resumeWatchers(bot)` runs: it re-registers every `watcher_state.enabled` user without the balance check and builds the WSS subscriptions.
-4. `SIGINT`/`SIGTERM`: stop polling, clear timers and subscriptions, close HTTP, end the pool, exit.
+2. `wallet.checkMasterKey()` decrypts the 200 most recent wallets. If any of them fail to open, the bot alerts `ADMIN_CHAT_ID` and exits 1 instead of starting. See §5b.
+3. HTTP server starts; `/health` returns `{ ok, chain, chainId, dryRun, watchers, wss, addresses }`.
+4. `bot.launch()` with a callback. The promise only resolves when polling stops, so the callback is where `watcher.resumeWatchers(bot)` runs: it re-registers every `watcher_state.enabled` user without the balance check and builds the WSS subscriptions.
+5. `SIGINT`/`SIGTERM`: stop polling, clear timers and subscriptions, close HTTP, end the pool, exit.
+
+## 5b. The master key must open the wallets
+
+Every private key in `users` is sealed with AES-256-GCM under `sha256(MASTER_ENCRYPTION_KEY)` (`services/crypto.js`). A wallet can only be opened by the key that created it, so a process holding the wrong one can sign for nobody — while looking completely healthy. Nothing reads a private key until someone's watched wallet sells, so the wrong key is invisible from deploy until the first buy.
+
+That is what happened on 2026-09-11: Railway held a different key from the one the wallets were written with, two users' buys failed at `wallet.getAccount`, and the whole signal was node's `Unsupported state or unable to authenticate data` — which names neither the key nor the cause, and was classified `UNKNOWN`, so it was retried five times and alerted five times.
+
+Three things changed:
+
+- `decryptSecret` tags its failure `KEY_MISMATCH` and says what actually went wrong.
+- `errors.js` makes `KEY_MISMATCH` non-retryable and alerting. The sixth attempt fails exactly like the first; only an operator changes the outcome. The user is told their funds are untouched.
+- `index.js` refuses to boot when the key cannot open existing wallets, so a bad deploy fails loudly at boot instead of quietly at someone's first buy.
+
+`opened === 0` means the environment is simply running the wrong key — put the right one back. A **mixed** result (some open, some do not) is worse: wallets were created under two different keys, no single key opens them all, and fixing it needs both keys and a re-encryption pass. Do not rotate `MASTER_ENCRYPTION_KEY` on a live database without one.
+
+Boot logs the key's fingerprint — the first twelve hex of its sha256 — which identifies the key across environments without revealing it. `node scripts/keycheck.js` prints the same fingerprint for any key/database pair, so a candidate key can be checked before it is deployed.
 
 ## 6. Concurrency and idempotence
 
@@ -191,4 +208,5 @@ await bot.handleUpdate({ update_id: 2, message: { message_id: 2, from, chat, dat
 | How a screen looks, what deletes itself, where the panel sits | `ui.js`; `config.MENU_BUMP_MS` for how long the chat must be quiet first |
 | Message wording | the handler or `watcher.js` / `executor.js` where it is sent; HTML parse mode, escape user-controlled text with `ui.esc()` |
 | A new table or column | `schema.sql` with `if not exists`; there is no migration tool |
+| Anything about the wallet encryption key | `services/crypto.js`; the boot guard is `index.js` `assertMasterKeyOpensWallets` and `wallet.checkMasterKey`, tested in `test/master-key.test.js`. Check a key against a database with `scripts/keycheck.js` before deploying it |
 | Another chain | `config.js` only, but use a separate database per chain (`tokens` is keyed by address only) |

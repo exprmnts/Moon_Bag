@@ -13,6 +13,9 @@ const REAL = {
   noPool: "Uniswap /quote 404: No quotes available",
   reverted: "Transaction reverted (0x62f3d87efc128a4376a6109d4a5a211893cad0b0761759cfe7f0d62b3c4bfb97)",
   broke: "The total cost (gas * gas fee + value) of executing this transaction exceeds the balance of the account.",
+  // 2026-09-11: the deployed bot held a different MASTER_ENCRYPTION_KEY than the
+  // one the wallets were sealed with. This is all node says about it.
+  wrongKey: "Unsupported state or unable to authenticate data",
 };
 
 test("a router timeout is retryable", () => {
@@ -100,4 +103,26 @@ test("attempts are capped", () => {
   assert.equal(canRetry(4, 5), true);
   assert.equal(canRetry(5, 5), false, "the fifth failure is the last");
   assert.equal(canRetry(6, 5), false);
+});
+
+// A wallet sealed under another key cannot be opened by trying again: the sixth
+// attempt fails exactly like the first. Before this was classified it landed in
+// UNKNOWN, which is retryable, and burned five attempts and five alerts.
+test("a wallet sealed under another master key is not retryable", () => {
+  const c = classify(new Error(REAL.wrongKey));
+  assert.equal(c.code, "KEY_MISMATCH");
+  assert.equal(c.retryable, false);
+  assert.equal(c.alert, true);
+});
+
+test("services/crypto tags the decrypt failure itself", () => {
+  const c = classify(tagged("KEY_MISMATCH", "This wallet was encrypted with a different MASTER_ENCRYPTION_KEY"));
+  assert.equal(c.code, "KEY_MISMATCH");
+  assert.equal(c.retryable, false);
+});
+
+test("the user is told their funds are untouched, not that we broke", () => {
+  const c = classify(new Error(REAL.wrongKey));
+  assert.match(c.user, /untouched/);
+  assert.doesNotMatch(c.user, /Something went wrong/);
 });

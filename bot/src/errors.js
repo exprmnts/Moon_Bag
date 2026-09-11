@@ -28,6 +28,11 @@ const CODES = {
   REVERTED: { retryable: true, alert: false, user: "The swap was sent but reverted on chain." },
   RECEIPT_TIMEOUT: { retryable: true, alert: false, user: "The swap was sent; waiting for it to confirm." },
   INSUFFICIENT_ETH: { retryable: false, alert: false, user: "Your bot wallet does not have enough ETH for this buy plus gas." },
+  // The running process holds a different MASTER_ENCRYPTION_KEY than the one
+  // this wallet was sealed with, so nothing can be signed for it. Deterministic:
+  // the sixth attempt fails exactly like the first, and only an operator fixing
+  // the environment changes that. Never retryable, always worth waking someone.
+  KEY_MISMATCH: { retryable: false, alert: true, user: "Your wallet could not be unlocked, so nothing was signed. Your funds are untouched and the team has been alerted." },
   UNKNOWN: { retryable: true, alert: true, user: "Something went wrong on our side." },
 };
 
@@ -52,6 +57,9 @@ function codeFor(err) {
 
   if (err && err.code && CODES[err.code]) return err.code;
 
+  // node's own words when an AES-GCM tag check fails. services/crypto.js tags
+  // the error it throws, so this only catches a decrypt somewhere that does not.
+  if (lower.includes("unsupported state or unable to authenticate data")) return "KEY_MISMATCH";
   if (lower.includes("no wallet") || lower === "no user") return "NO_WALLET";
   if (lower.includes("only exist on robinhood chain mainnet")) return "NOT_MAINNET";
   if (lower.includes("uniswap_api_key") || lower.includes("is not set")) return "CONFIG";

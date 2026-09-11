@@ -18,6 +18,7 @@ npm test                        # pure logic: decide(), fee(), errors()
 node scripts/spike-quote.js     # Uniswap quote + swap build on mainnet (nothing sent)
 node scripts/spike-ws.js [addr] # WSS Transfer subscription check
 node scripts/smoke.js <telegram_id>   # one check pass for a user, decisions printed
+node scripts/keycheck.js        # can MASTER_ENCRYPTION_KEY open the wallets in DATABASE_URL?
 curl localhost:3000/health
 ```
 

@@ -69,6 +69,7 @@ Rules that are easy to break by accident:
 | The retry worker, and `/retry` to requeue failed buys | `bot/src/retry.js`, `executor.requeueFailed` |
 | Dev alerts (`ADMIN_CHAT_ID`) | `bot/src/services/alerts.js` |
 | What reaches the console, and at which level | `bot/src/log.js`, `LOG_LEVEL` |
+| The wallet encryption key, and the boot guard that checks it | `bot/src/services/crypto.js`, `index.js` `assertMasterKeyOpensWallets`, `wallet.checkMasterKey`, `bot/test/master-key.test.js`; `bot/scripts/keycheck.js` to check a key before deploying |
 | A user the bot cannot message | `ui.toUser` / `ui.UNREACHABLE`, `wallet.markUnreachable`, `users.unreachable_at` |
 | Pencil cursor (fine pointers only) | `moon-bag/app/components/Cursor.js` |
 | Hero CTA pill button | `moon-bag/app/components/PillButton.js` |
