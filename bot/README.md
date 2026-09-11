@@ -6,6 +6,8 @@ Telegram bot on Robinhood Chain. It watches wallets you name; when a token in on
 
 A buy that fails for a transient reason is retried in the background up to five times; the user sees one message that changes rather than one per attempt. Failures a retry cannot fix go to `ADMIN_CHAT_ID`.
 
+The logs are meant to be readable: at the default `LOG_LEVEL=info` a buy that works prints two lines and a quiet minute prints nothing. Set `LOG_LEVEL=debug` when you need every trigger, every duplicate sell and the gas arithmetic.
+
 ## Run
 
 ```bash
@@ -37,7 +39,8 @@ RPC_URL=http://localhost:8545 node scripts/e2e-chain.js   # a real swap against 
 
 | File | Role |
 | --- | --- |
-| `src/config.js` | env parsing, chain constants, `DEFAULT_BUY_ETH`, thresholds, retry and gas settings |
+| `src/config.js` | env parsing, chain constants, `DEFAULT_BUY_ETH`, thresholds, retry, gas and log settings |
+| `src/log.js` | `LOG_LEVEL`: what reaches the console, and at which level |
 | `src/index.js` | Telegraf handlers, boot (`ensureSchema` → launch → `resumeWatchers` + retry worker), `/health` |
 | `src/ui.js` | keyboards, screens, force-reply questions, message deletion — everything the chat looks like |
 | `src/wallet.js` | users, AES-256-GCM key storage, buy amount, watched wallets, conversation slot |

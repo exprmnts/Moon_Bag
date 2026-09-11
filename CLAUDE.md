@@ -2,7 +2,7 @@
 
 **Status (2026-09-05):** the bot has been ported from Solana to Robinhood Chain per `ROADMAP.md` (Phases 0–6 prep done, see the Status block at the top of that file). The port is verified on testnet end to end; the mainnet swap, the Railway deploy and the secret rotation are the remaining steps. `ROADMAP.md` decisions are settled apart from fees; do not reopen the rest.
 
-**Reliability pass (2026-09-11, branch `bot-ux-reliability`):** the Telegram surface was rebuilt for readability (wallet-gated menu, one screen that edits itself, force-reply questions that delete themselves, private key auto-deleted after 60s) and buys became reliable: failures are classified, retried up to five times with backoff, and reported to `ADMIN_CHAT_ID`. Two real bugs were found and fixed — the Uniswap Trading API returns a `gasLimit` ~4x too low on Robinhood Chain (every "Transaction reverted" was out of gas; proven on an anvil fork), and the sell key was block-only so a wallet selling the same token N times was only bought once. See `bot/ARCHITECTURE.md` §2b, §3 and §6.
+**Reliability pass (2026-09-11, branch `bot-ux-reliability`):** the Telegram surface was rebuilt for readability (wallet-gated menu, one screen that edits itself, force-reply questions that delete themselves, private key auto-deleted after 60s) and buys became reliable: failures are classified, retried up to five times with backoff, and reported to `ADMIN_CHAT_ID`. Two real bugs were found and fixed — the Uniswap Trading API returns a `gasLimit` ~4x too low on Robinhood Chain (every "Transaction reverted" was out of gas; proven on an anvil fork), and the sell key was block-only so a wallet selling the same token N times was only bought once. A follow-up pass on the same branch made the logs match: `LOG_LEVEL` (default `info`) means a buy that works prints two lines and an idle bot prints nothing, and a user Telegram refuses to deliver to is muted once rather than retried and re-alerted for every message. See `bot/ARCHITECTURE.md` §2b, §2c, §2d, §3 and §6.
 
 **The fee (2026-09-05, branch `fee-in-token`):** the owner reopened the "no fees" decision. 1% of every buy is now taken **in the token bought** and paid to `TREASURY_ADDRESS` inside the swap, via the Uniswap Trading API's `integratorFees`. Proven against the real mainnet API (`scripts/spike-quote.js`); no real buy has run yet. See `FEE-PLAN.md` for the mechanism, the ETH-vs-token research and what is left.
 
@@ -68,6 +68,8 @@ Rules that are easy to break by accident:
 | What a failed buy means and whether to retry it | `bot/src/errors.js`, `bot/test/errors.test.js` |
 | The retry worker, and `/retry` to requeue failed buys | `bot/src/retry.js`, `executor.requeueFailed` |
 | Dev alerts (`ADMIN_CHAT_ID`) | `bot/src/services/alerts.js` |
+| What reaches the console, and at which level | `bot/src/log.js`, `LOG_LEVEL` |
+| A user the bot cannot message | `ui.toUser` / `ui.UNREACHABLE`, `wallet.markUnreachable`, `users.unreachable_at` |
 | Pencil cursor (fine pointers only) | `moon-bag/app/components/Cursor.js` |
 | Hero CTA pill button | `moon-bag/app/components/PillButton.js` |
 
