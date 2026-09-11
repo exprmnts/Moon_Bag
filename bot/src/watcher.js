@@ -2,13 +2,16 @@
 // an ERC-20 Transfer log involving a watched wallet (WSS, immediate) and a
 // 60-second poll (backstop). Checks for one watched wallet are serialised so
 // the two triggers can never race into a double buy.
-const { parseAbiItem, getAddress, formatEther } = require("viem");
+const { parseAbiItem, getAddress } = require("viem");
 const config = require("./config");
 const db = require("./services/db");
 const wallet = require("./wallet");
 const alchemy = require("./services/alchemy");
 const { decide } = require("./decide");
 const executor = require("./executor");
+const alerts = require("./services/alerts");
+const ui = require("./ui");
+const log = require("./log").scope("watcher");
 
 const TRANSFER = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -30,13 +33,11 @@ function withLock(key, fn) {
   return next;
 }
 
+// Addressed to the user, not to a chat id: ui.toUser works out which chat that
+// means (a group, for someone who has never opened a private chat).
 async function send(telegramId, text) {
-  if (!botRef) return;
-  try {
-    await botRef.telegram.sendMessage(telegramId, text, { parse_mode: "HTML", link_preview_options: { is_disabled: true } });
-  } catch (err) {
-    console.error(`[watcher] sendMessage to ${telegramId} failed: ${err.message}`);
-  }
+  if (!botRef) return null;
+  return ui.toUser(botRef, telegramId, text);
 }
 
 async function tokenLabel(token) {
@@ -99,32 +100,38 @@ async function checkAddress(bot, telegramId, watchedWallet, { blockNumber } = {}
       if (d.kind === "none") continue;
 
       const { name, fmt } = await tokenLabel(token);
-      const head = `Address: <code>${addr}</code>\nToken: <b>${name}</b> <code>${token}</code>`;
+      const short = alchemy.shortAddress(addr);
 
       if (d.kind === "new") {
-        await send(telegramId, `📈 <b>Buy detected (new token)</b>\n${head}\nAmount: ${fmt(now)}`);
+        await send(telegramId, `📈 <b>Buy detected</b> · <code>${short}</code>\n<b>${name}</b> — ${fmt(now)} (new)`);
         await setBaseline(watchedWallet.id, token, now);
         continue;
       }
       if (d.kind === "up") {
-        await send(telegramId, `📈 <b>Buy detected</b>\n${head}\nIncrease: +${fmt(now - base)} (from ${fmt(base)} → ${fmt(now)})`);
+        await send(telegramId, `📈 <b>Buy detected</b> · <code>${short}</code>\n<b>${name}</b> — +${fmt(now - base)} (now ${fmt(now)})`);
         await setBaseline(watchedWallet.id, token, now);
         continue;
       }
 
-      // sell
-      const ethText = formatEther(user.buyAmountWei);
-      await send(
-        telegramId,
-        `🚨 <b>Sell detected</b>\n${head}\nDrop: ${(d.dropPct * 100).toFixed(2)}%\n➡️ Buying your moonbag for ${ethText} ETH...`
-      );
+      // A sell. The key has to be unique per *user*, per sell:
+      //
+      //   <telegramId> several people may watch the same trading wallet, and each
+      //                one is owed their own moonbag. Without this they collide and
+      //                only whoever is processed first gets a buy.
+      //   <address>    which watched wallet sold, for the message.
+      //   <token>
+      //   <block>
+      //   <before-after> the exact balance transition, so selling the same token
+      //                three times is three sells, while the WSS event and the
+      //                poll seeing one drop still build one key and collapse.
       if (block == null) block = await alchemy.publicClient().getBlockNumber();
-      const sellKey = `${addr}:${token}:${block}`;
+      const sellKey = `${telegramId}:${addr}:${token}:${block}:${base}-${now}`;
+      // The baseline moves as soon as the sell is recorded. From that moment the
+      // trades row owns the outcome, retries included, so a later check must not
+      // see the same drop again and announce it twice.
+      await setBaseline(watchedWallet.id, token, now);
       const result = await executor.buy(botRef, telegramId, token, sellKey);
       decisions[decisions.length - 1].buy = result.status;
-      // The baseline moves only once the buy is settled (confirmed, dry run or
-      // already handled). A failed buy leaves it, so the next check retries.
-      if (result.status !== "failed") await setBaseline(watchedWallet.id, token, now);
     }
     return decisions;
   });
@@ -141,26 +148,56 @@ async function checkWatchedAddress(address, blockNumber) {
     if (!watchers.has(row.telegram_id)) continue;
     try {
       await checkAddress(botRef, row.telegram_id, row, { blockNumber });
+      failures.delete(row.id);
     } catch (err) {
-      console.error(`[watcher] check ${row.address} for ${row.telegram_id} failed: ${err.shortMessage || err.message}`);
+      noteFailure(row, err);
     }
   }
 }
 
+// A check failing once is the RPC blinking. Failing repeatedly for the same
+// wallet means the user's moonbags are silently not being watched, which is the
+// one thing this bot must not do quietly.
+const failures = new Map(); // watched_wallet_id -> consecutive failures
+const FAILURES_BEFORE_ALERT = 3;
+
+function noteFailure(row, err) {
+  const n = (failures.get(row.id) || 0) + 1;
+  failures.set(row.id, n);
+  // One failure is the RPC blinking; keep it out of the way until it repeats.
+  const line = `check ${row.address} for ${row.telegram_id} failed (${n}): ${err.shortMessage || err.message}`;
+  if (n < FAILURES_BEFORE_ALERT) log.debug(line);
+  else log.error(line);
+  if (n === FAILURES_BEFORE_ALERT) {
+    alerts
+      .notifyDev("Watched wallet keeps failing its check", {
+        address: row.address,
+        telegramId: row.telegram_id,
+        failures: n,
+        error: err.shortMessage || err.message,
+      }, { key: `check:${row.id}` })
+      .catch(() => {});
+  }
+}
+
 // ---- WSS subscription -----------------------------------------------------------
+// `transfer`, not `log`: this file's logger is called log, and a loop variable
+// of that name silently shadowed it inside the timer below.
 function onLogs(logs) {
-  for (const log of logs) {
-    const from = log.args?.from?.toLowerCase();
-    const to = log.args?.to?.toLowerCase();
+  for (const transfer of logs) {
+    const from = transfer.args?.from?.toLowerCase();
+    const to = transfer.args?.to?.toLowerCase();
     for (const address of [from, to]) {
       if (!address || !subs.addresses.has(address)) continue;
       const entry = debounces.get(address) || { timer: null, blockNumber: null };
-      entry.blockNumber = log.blockNumber;
+      entry.blockNumber = transfer.blockNumber;
       if (entry.timer) clearTimeout(entry.timer);
       entry.timer = setTimeout(() => {
         debounces.delete(address);
-        console.log(`[watcher] transfer touching ${address} at block ${entry.blockNumber}`);
-        checkWatchedAddress(address, entry.blockNumber).catch((e) => console.error("[watcher] event check", e.message));
+        // Most transfers touching a watched wallet are not sells, and the ones
+        // that are announce themselves through the executor. Debug.
+        log.debug(`transfer touching ${address} at block ${entry.blockNumber}`);
+        checkWatchedAddress(address, entry.blockNumber).catch((e) => log.error(`event check: ${e.message}`));
       }, config.EVENT_DEBOUNCE_MS);
       debounces.set(address, entry);
     }
@@ -168,7 +205,7 @@ function onLogs(logs) {
 }
 
 function onWsError(err) {
-  if (subs.healthy) console.error(`[watcher] WSS error, relying on the poll until rebuilt: ${err.shortMessage || err.message}`);
+  if (subs.healthy) log.warn(`WSS error, relying on the poll until rebuilt: ${err.shortMessage || err.message}`);
   subs.healthy = false;
 }
 
@@ -198,10 +235,16 @@ async function rebuildSubscriptions() {
     subs.unwatch.push(client.watchEvent({ event: TRANSFER, args: { from: checksummed }, onLogs, onError: onWsError }));
     subs.unwatch.push(client.watchEvent({ event: TRANSFER, args: { to: checksummed }, onLogs, onError: onWsError }));
     subs.healthy = true;
-    console.log(`[watcher] WSS subscriptions rebuilt for ${addresses.length} address(es)`);
+    log.info(`WSS subscriptions rebuilt for ${addresses.length} address(es)`);
   } catch (err) {
     subs.healthy = false;
-    console.error(`[watcher] WSS subscribe failed: ${err.shortMessage || err.message}`);
+    // Not fatal: the 60-second poll is the backstop and pollOnce retries this
+    // every tick. It is worth a developer's attention because latency goes from
+    // seconds to a minute while it lasts.
+    await alerts.notifyDev("WSS subscribe failed, falling back to the poll", {
+      addresses: addresses.length,
+      error: err.shortMessage || err.message,
+    }, { key: "wss-subscribe" });
   }
 }
 
@@ -216,14 +259,17 @@ async function pollOnce() {
       for (const w of wallets) {
         try {
           await checkAddress(botRef, telegramId, w);
+          failures.delete(w.id);
         } catch (err) {
-          console.error(`[watcher] poll ${w.address} for ${telegramId} failed: ${err.shortMessage || err.message}`);
+          noteFailure(w, err);
         }
       }
       await db.query("update watcher_state set last_poll_at = now() where telegram_id = $1", [telegramId]);
     }
   } catch (err) {
-    console.error(`[watcher] poll failed: ${err.message}`);
+    // Everything per-wallet is already caught above, so reaching here means the
+    // database or the wallet list is unavailable: nobody is being watched.
+    alerts.swallow("watcher.pollOnce", err);
   } finally {
     polling = false;
   }
@@ -235,19 +281,20 @@ function ensurePoll() {
 }
 
 // ---- start / stop / resume ------------------------------------------------------
+// Throws NO_WALLET / NO_WATCHED / WALLET_BALANCE_ZERO; index.js turns those into
+// screens. Returns { watched, lowBalance } so the caller can warn about a wallet
+// that is funded but thin.
 async function startWatcher(bot, telegramId) {
   botRef = bot;
   const user = await wallet.getUser(telegramId);
   if (!user) throw new Error("NO_WALLET");
 
+  const watched = await wallet.listWatchAddresses(telegramId);
+  if (!watched.length) throw new Error("NO_WATCHED");
+
   const eth = await alchemy.getEthBalance(user.address);
-  if (eth === 0n) {
-    await send(
-      telegramId,
-      `⚠️ Your bot wallet has 0 ETH. Please top-up the wallet to cover swap fees before enabling moonbags.\n\n<code>${user.address}</code>`
-    );
-    throw new Error("WALLET_BALANCE_ZERO");
-  }
+  if (eth === 0n) throw new Error("WALLET_BALANCE_ZERO");
+  const lowBalance = eth < user.buyAmountWei;
 
   await db.query(
     `insert into watcher_state (telegram_id, enabled) values ($1, true)
@@ -260,14 +307,13 @@ async function startWatcher(bot, telegramId) {
 
   // First pass now, so the user does not wait for the poll. Not awaited: the
   // Telegram reply should not hang on RPC calls.
-  wallet.listWatchAddresses(telegramId).then(async (wallets) => {
-    for (const w of wallets) {
-      try { await checkAddress(bot, telegramId, w); } catch (err) {
-        console.error(`[watcher] initial check ${w.address} failed: ${err.shortMessage || err.message}`);
-      }
+  (async () => {
+    for (const w of watched) {
+      try { await checkAddress(bot, telegramId, w); } catch (err) { noteFailure(w, err); }
     }
-  }).catch((e) => console.error("[watcher] initial pass", e.message));
-  console.log(`[watcher] started for ${telegramId}`);
+  })().catch((err) => alerts.swallow("watcher.initialPass", err, { telegramId }));
+  log.info(`started for ${telegramId} (${watched.length} wallet(s))`);
+  return { watched: watched.length, lowBalance };
 }
 
 async function stopWatcher(telegramId) {
@@ -278,7 +324,7 @@ async function stopWatcher(telegramId) {
     [telegramId]
   );
   await rebuildSubscriptions();
-  console.log(`[watcher] stopped for ${telegramId}`);
+  log.info(`stopped for ${telegramId}`);
 }
 
 // At boot: re-register everyone whose watcher was on, without the balance check.
@@ -288,7 +334,7 @@ async function resumeWatchers(bot) {
   for (const r of rows) watchers.set(r.telegram_id, { since: Date.now() });
   ensurePoll();
   await rebuildSubscriptions();
-  console.log(`[watcher] resumed ${rows.length} watcher(s)`);
+  log.info(`resumed ${rows.length} watcher(s)`);
   return rows.length;
 }
 
@@ -315,6 +361,7 @@ function shutdown() {
 
 module.exports = {
   checkAddress,
+  onLogs, // exported for the test that drives the WSS path
   seedPositions,
   startWatcher,
   stopWatcher,

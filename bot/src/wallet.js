@@ -12,6 +12,7 @@ function rowToUser(row) {
     telegramId: row.telegram_id,
     address: row.address,
     buyAmountWei: BigInt(row.buy_amount_wei),
+    chatId: row.chat_id || null,
     createdAt: row.created_at,
   };
 }
@@ -43,6 +44,90 @@ async function createUserWalletIfMissing(telegramId) {
     [telegramId]
   );
   return { user: rowToUser(row), created: true };
+}
+
+// ---- where to message this user ------------------------------------------------
+// telegram_id identifies the person; chat_id is the conversation. They are the
+// same in a private chat and different in a group, and a person who has only
+// ever used the bot in a group has no private chat to receive anything — so
+// sending to telegram_id fails with "chat not found". Every update refreshes
+// this, and every outbound message reads it.
+//
+// A route also carries whether Telegram has already refused delivery. That
+// refusal is permanent until the user comes back, so it is remembered: without
+// it, one sell produced four failed sends and four alert lines for a user who
+// was never going to receive any of them.
+const routes = new Map(); // telegramId -> { chatId, blocked }
+
+async function routeFor(telegramId) {
+  const cached = routes.get(telegramId);
+  if (cached) return cached;
+  const row = await db.one("select chat_id, unreachable_at from users where telegram_id = $1", [telegramId]);
+  // The fallback is right for everyone who uses the bot in a private chat,
+  // including users who predate the column.
+  const route = { chatId: (row && row.chat_id) || String(telegramId), blocked: Boolean(row && row.unreachable_at) };
+  routes.set(telegramId, route);
+  return route;
+}
+
+// Called for every update, before anything else. Returns true when this update
+// is what made a previously unreachable user reachable again — the one moment
+// worth a log line.
+async function rememberChat(telegramId, chatId) {
+  if (chatId == null) return false;
+  const value = String(chatId);
+  const known = routes.get(telegramId);
+  if (known && known.chatId === value && !known.blocked) return false;
+  const recovered = Boolean(known && known.blocked);
+  routes.set(telegramId, { chatId: value, blocked: false });
+  // Hearing from someone is proof they can be reached, so the same write clears
+  // the block. Conditional, so the common case costs nothing.
+  await db.query(
+    `update users set chat_id = $2, unreachable_at = null, unreachable_reason = null
+     where telegram_id = $1 and (coalesce(chat_id, '') is distinct from $2 or unreachable_at is not null)`,
+    [telegramId, value]
+  );
+  return recovered;
+}
+
+async function getChatId(telegramId) {
+  return (await routeFor(telegramId)).chatId;
+}
+
+// Records that Telegram will not deliver to this user. Returns true only the
+// first time, which is what keeps the alert from repeating: the condition is
+// stored, so a restart does not re-announce it either.
+async function markUnreachable(telegramId, reason) {
+  const route = routes.get(telegramId);
+  if (route) route.blocked = true;
+  const row = await db.one(
+    `update users set unreachable_at = now(), unreachable_reason = $2
+     where telegram_id = $1 and unreachable_at is null returning telegram_id`,
+    [telegramId, String(reason || "").slice(0, 200)]
+  );
+  return Boolean(row);
+}
+
+function forgetChat(telegramId) {
+  routes.delete(telegramId);
+}
+
+// ---- where the control panel is ------------------------------------------------
+// One message with the buttons on it, edited in place. Remembering which one
+// lets the bot delete it and re-send it at the bottom when notifications have
+// pushed it up the chat.
+async function setMenuMessage(telegramId, chatId, msgId) {
+  await db.query("update users set menu_chat_id = $2, menu_msg_id = $3 where telegram_id = $1", [
+    telegramId,
+    chatId == null ? null : String(chatId),
+    msgId == null ? null : Number(msgId),
+  ]);
+}
+
+async function getMenuMessage(telegramId) {
+  const row = await db.one("select menu_chat_id, menu_msg_id from users where telegram_id = $1", [telegramId]);
+  if (!row || row.menu_msg_id == null) return null;
+  return { chatId: row.menu_chat_id, msgId: Number(row.menu_msg_id) };
 }
 
 // Decrypts the user's key and returns a viem account for signing.
@@ -117,22 +202,42 @@ async function isWatcherEnabled(telegramId) {
   return Boolean(row && row.enabled);
 }
 
-// Conversation slot: a user can only be awaiting one thing at a time.
-async function setAwaiting(telegramId, awaiting) {
+// Conversation slot: a user can only be awaiting one thing at a time. The
+// prompt's chat and message id ride along so answering it can delete the
+// question (see ui.ask / ui.closePrompt in index.js).
+async function setAwaiting(telegramId, awaiting, { chatId = null, msgId = null } = {}) {
   await db.query(
-    `insert into conversations (telegram_id, awaiting) values ($1, $2)
-     on conflict (telegram_id) do update set awaiting = excluded.awaiting, updated_at = now()`,
-    [telegramId, awaiting]
+    `insert into conversations (telegram_id, awaiting, prompt_chat_id, prompt_msg_id) values ($1, $2, $3, $4)
+     on conflict (telegram_id) do update set awaiting = excluded.awaiting,
+       prompt_chat_id = excluded.prompt_chat_id, prompt_msg_id = excluded.prompt_msg_id, updated_at = now()`,
+    [telegramId, awaiting, chatId == null ? null : String(chatId), msgId == null ? null : Number(msgId)]
   );
 }
 
 async function getAwaiting(telegramId) {
-  const row = await db.one("select awaiting from conversations where telegram_id = $1", [telegramId]);
+  const row = await getConversation(telegramId);
   return row ? row.awaiting : null;
+}
+
+// { awaiting, promptChatId, promptMsgId } or null.
+async function getConversation(telegramId) {
+  const row = await db.one(
+    "select awaiting, prompt_chat_id, prompt_msg_id from conversations where telegram_id = $1",
+    [telegramId]
+  );
+  if (!row) return null;
+  return { awaiting: row.awaiting, promptChatId: row.prompt_chat_id, promptMsgId: row.prompt_msg_id };
 }
 
 module.exports = {
   getUser,
+  rememberChat,
+  routeFor,
+  getChatId,
+  markUnreachable,
+  forgetChat,
+  setMenuMessage,
+  getMenuMessage,
   createUserWalletIfMissing,
   getAccount,
   exportPrivateKey,
@@ -145,4 +250,5 @@ module.exports = {
   isWatcherEnabled,
   setAwaiting,
   getAwaiting,
+  getConversation,
 };

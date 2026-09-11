@@ -16,6 +16,15 @@ if (!["mainnet", "testnet"].includes(CHAIN_NAME)) {
   throw new Error(`CHAIN must be "mainnet" or "testnet", got "${CHAIN_NAME}"`);
 }
 
+// How much reaches the console. `info` is the smooth path: state changes only.
+// `debug` adds every trigger, every skip and the arithmetic behind a decision.
+// See src/log.js.
+const LOG_LEVELS = ["debug", "info", "warn", "error", "silent"];
+const LOG_LEVEL = (process.env.LOG_LEVEL || "info").toLowerCase();
+if (!LOG_LEVELS.includes(LOG_LEVEL)) {
+  throw new Error(`LOG_LEVEL must be one of ${LOG_LEVELS.join(", ")}, got "${LOG_LEVEL}"`);
+}
+
 const IS_MAINNET = CHAIN_NAME === "mainnet";
 const ALCHEMY_API_KEY = required("ALCHEMY_API_KEY");
 const ALCHEMY_NETWORK = IS_MAINNET ? "robinhood-mainnet" : "robinhood-testnet";
@@ -44,8 +53,10 @@ const config = {
   isMainnet: IS_MAINNET,
   chain,
   chainId: chain.id,
-  rpcUrl: `https://${ALCHEMY_NETWORK}.g.alchemy.com/v2/${ALCHEMY_API_KEY}`,
-  wssUrl: `wss://${ALCHEMY_NETWORK}.g.alchemy.com/v2/${ALCHEMY_API_KEY}`,
+  // RPC_URL / WSS_URL override Alchemy. Only for pointing a test run at a local
+  // fork (anvil); production leaves both unset.
+  rpcUrl: process.env.RPC_URL || `https://${ALCHEMY_NETWORK}.g.alchemy.com/v2/${ALCHEMY_API_KEY}`,
+  wssUrl: process.env.WSS_URL || `wss://${ALCHEMY_NETWORK}.g.alchemy.com/v2/${ALCHEMY_API_KEY}`,
   explorerTx: IS_MAINNET
     ? "https://robinhoodchain.blockscout.com/tx/"
     : "https://explorer.testnet.chain.robinhood.com/tx/",
@@ -63,10 +74,15 @@ const config = {
 
   dryRun: String(process.env.DRY_RUN ?? "true").toLowerCase() !== "false",
   port: Number(process.env.PORT || 3000),
+  logLevel: LOG_LEVEL,
 
   treasury, // checksummed, or null (testnet only)
   FEE_BIPS, // basis points of the tokens bought, 100 = 1%; Uniswap allows at most 500
   feeEnabled: Boolean(treasury) && FEE_BIPS > 0,
+
+  // Where failures that need a human go. A Telegram chat id (a user id, or a
+  // group id starting with -100). Unset means console only.
+  adminChatId: (process.env.ADMIN_CHAT_ID || "").trim(),
 
   DEFAULT_BUY_ETH: "0.005",
   DEFAULT_BUY_WEI: parseEther("0.005"),
@@ -75,6 +91,34 @@ const config = {
   POLL_MS: 60_000,
   EVENT_DEBOUNCE_MS: 2_000,
   HIGH_BUY_WARN_ETH: 1,
+
+  // Retries. A buy that fails for a transient reason (Uniswap's router timing
+  // out, a price that moved, an RPC hiccup) is attempted at most this many times
+  // in total; the delay before attempt N+1 is RETRY_BACKOFF_MS[N-1], last value
+  // reused. The worker wakes every RETRY_TICK_MS and runs whatever is due.
+  MAX_BUY_ATTEMPTS: 5,
+  RETRY_BACKOFF_MS: [5_000, 15_000, 45_000, 120_000],
+  RETRY_TICK_MS: 10_000,
+  // A trade left 'pending' by a crash is re-queued once it is this old.
+  STRANDED_AFTER_MS: 5 * 60_000,
+
+  // Message lifetimes, in ms. The private key is deleted from the chat after a
+  // minute; short-lived confirmations go after EPHEMERAL.
+  KEY_TTL_MS: 60_000,
+  EPHEMERAL_TTL_MS: 30_000,
+
+  // How long the Uniswap Trading API gets, and how many times one call retries
+  // its own transient failures before the attempt is counted as failed.
+  UNISWAP_TIMEOUT_MS: 20_000,
+  UNISWAP_RETRIES: 2,
+
+  // Gas. The Uniswap Trading API's own gasLimit has been seen 4x too low on
+  // Robinhood Chain (tx 0x62f3d87efc128a4376a6109d4a5a211893cad0b0761759cfe7f0d62b3c4bfb97
+  // used its whole 259 000 limit and reverted out of gas while the call really
+  // needed ~1.13M), so every swap is estimated locally and the larger of the two,
+  // plus a buffer, is sent.
+  GAS_BUFFER_PCT: 35,
+  GAS_LIMIT_CAP: 5_000_000n,
 };
 
 module.exports = config;

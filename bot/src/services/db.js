@@ -2,22 +2,28 @@ const fs = require("fs");
 const path = require("path");
 const { Pool } = require("pg");
 const config = require("../config");
+const log = require("../log").scope("db");
 
 // Neon strings carry sslmode=require; pg warns about it, so we strip the
-// parameter and ask for a verified TLS connection explicitly.
+// parameter and ask for a verified TLS connection explicitly. A local Postgres
+// (a test container) speaks plain TCP, so TLS is skipped when the host is local
+// or the string says sslmode=disable — never for anything remote.
 const url = new URL(config.databaseUrl);
+const sslmode = url.searchParams.get("sslmode");
 url.searchParams.delete("sslmode");
+const local = ["localhost", "127.0.0.1", "::1", "host.docker.internal"].includes(url.hostname);
+const ssl = sslmode === "disable" || local ? false : { rejectUnauthorized: true };
 
 const pool = new Pool({
   connectionString: url.toString(),
-  ssl: { rejectUnauthorized: true },
+  ssl,
   max: 5,
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 10_000,
 });
 
 pool.on("error", (err) => {
-  console.error("[db] idle client error", err.message);
+  log.error(`idle client error: ${err.message}`);
 });
 
 async function ensureSchema() {

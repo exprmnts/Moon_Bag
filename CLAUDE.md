@@ -2,6 +2,8 @@
 
 **Status (2026-09-05):** the bot has been ported from Solana to Robinhood Chain per `ROADMAP.md` (Phases 0–6 prep done, see the Status block at the top of that file). The port is verified on testnet end to end; the mainnet swap, the Railway deploy and the secret rotation are the remaining steps. `ROADMAP.md` decisions are settled apart from fees; do not reopen the rest.
 
+**Reliability pass (2026-09-11, branch `bot-ux-reliability`):** the Telegram surface was rebuilt for readability (wallet-gated menu, one screen that edits itself, force-reply questions that delete themselves, private key auto-deleted after 60s) and buys became reliable: failures are classified, retried up to five times with backoff, and reported to `ADMIN_CHAT_ID`. Two real bugs were found and fixed — the Uniswap Trading API returns a `gasLimit` ~4x too low on Robinhood Chain (every "Transaction reverted" was out of gas; proven on an anvil fork), and the sell key was block-only so a wallet selling the same token N times was only bought once. A follow-up pass on the same branch made the logs match: `LOG_LEVEL` (default `info`) means a buy that works prints two lines and an idle bot prints nothing, and a user Telegram refuses to deliver to is muted once rather than retried and re-alerted for every message. See `bot/ARCHITECTURE.md` §2b, §2c, §2d, §3 and §6.
+
 **The fee (2026-09-05, branch `fee-in-token`):** the owner reopened the "no fees" decision. 1% of every buy is now taken **in the token bought** and paid to `TREASURY_ADDRESS` inside the swap, via the Uniswap Trading API's `integratorFees`. Proven against the real mainnet API (`scripts/spike-quote.js`); no real buy has run yet. See `FEE-PLAN.md` for the mechanism, the ETH-vs-token research and what is left.
 
 Docs: `README.md` (entry point), `DEPLOYMENT.md` (accounts, env, pre-launch checklist, Railway and Vercel steps, operations), `bot/ARCHITECTURE.md` (the rule, data flow, tables, concurrency, testing pattern), `ROADMAP-V2.md` (what to build next, ranked). New product ideas go in `ROADMAP-V2.md`, not in code.
@@ -27,7 +29,7 @@ curl localhost:3000/health
 - Amounts are `bigint` in code and `numeric` in Postgres. Never `Number()` a wei value.
 - `schema.sql` is idempotent and runs at every boot; there is no migration tool. Add columns with `alter table … add column if not exists`.
 - Deploy: Railway service from `bot/` with the Dockerfile (see `bot/README.md`). Neon `main` branch for Railway, `dev` for the laptop.
-- Testing: `npm test` for the pure rule. Everything else was verified with throwaway harnesses that stub `Telegram.prototype.callApi` and drive `bot.handleUpdate` with fake updates against the real Neon `dev` branch and Alchemy testnet; `index.js` exports `{ bot }` and only boots when run directly, so a harness can require it. On-chain loops use a throwaway operator wallet funded with testnet ETH (gas is ~0.01 gwei, so 0.0001 ETH covers ~180 transfers). The real testnet WETH wrapper (has `deposit()`) is `0x33e4191705c386532ba27cbf171db86919200b94`.
+- Testing: `npm test` for the pure logic (decide, fee, errors). `node scripts/e2e-ui.js` drives the whole Telegram surface and the retry queue against a Postgres container; `RPC_URL=http://localhost:8545 node scripts/e2e-chain.js` runs a real swap against an anvil fork of mainnet (both documented in `bot/README.md`). Everything else was verified with throwaway harnesses that stub `Telegram.prototype.callApi` and drive `bot.handleUpdate` with fake updates against the real Neon `dev` branch and Alchemy testnet; `index.js` exports `{ bot }` and only boots when run directly, so a harness can require it. On-chain loops use a throwaway operator wallet funded with testnet ETH (gas is ~0.01 gwei, so 0.0001 ETH covers ~180 transfers). The real testnet WETH wrapper (has `deposit()`) is `0x33e4191705c386532ba27cbf171db86919200b94`.
 
 ## Working on the website
 
@@ -62,6 +64,12 @@ Rules that are easy to break by accident:
 | Chart on slide 3 (SVG, draws itself) | `moon-bag/app/components/Chart.js` |
 | FAQ accordion (marked `data-no-advance`), fee answer | `moon-bag/app/components/FAQ.js` |
 | The 1% fee (pure logic + tests) | `bot/src/fee.js`, `bot/test/fee.test.js`; wired in `bot/src/executor.js` and `bot/src/services/uniswap.js` |
+| Bot keyboards, screens, force-reply questions, self-deleting messages | `bot/src/ui.js` |
+| What a failed buy means and whether to retry it | `bot/src/errors.js`, `bot/test/errors.test.js` |
+| The retry worker, and `/retry` to requeue failed buys | `bot/src/retry.js`, `executor.requeueFailed` |
+| Dev alerts (`ADMIN_CHAT_ID`) | `bot/src/services/alerts.js` |
+| What reaches the console, and at which level | `bot/src/log.js`, `LOG_LEVEL` |
+| A user the bot cannot message | `ui.toUser` / `ui.UNREACHABLE`, `wallet.markUnreachable`, `users.unreachable_at` |
 | Pencil cursor (fine pointers only) | `moon-bag/app/components/Cursor.js` |
 | Hero CTA pill button | `moon-bag/app/components/PillButton.js` |
 

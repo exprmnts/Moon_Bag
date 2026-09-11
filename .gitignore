@@ -2,3 +2,6 @@ design-experiments/
 .DS_Store
 .vercel
 .env*.local
+
+# Claude Code personal settings (permissions). Shared config would go in .claude/settings.json.
+.claude/settings.local.json
