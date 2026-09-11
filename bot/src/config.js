@@ -82,6 +82,14 @@ const config = {
   // its own transient failures before the attempt is counted as failed.
   UNISWAP_TIMEOUT_MS: 20_000,
   UNISWAP_RETRIES: 2,
+
+  // Gas. The Uniswap Trading API's own gasLimit has been seen 4x too low on
+  // Robinhood Chain (tx 0x62f3d87efc128a4376a6109d4a5a211893cad0b0761759cfe7f0d62b3c4bfb97
+  // used its whole 259 000 limit and reverted out of gas while the call really
+  // needed ~1.13M), so every swap is estimated locally and the larger of the two,
+  // plus a buffer, is sent.
+  GAS_BUFFER_PCT: 35,
+  GAS_LIMIT_CAP: 5_000_000n,
 };
 
 module.exports = config;

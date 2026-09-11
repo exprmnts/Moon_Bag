@@ -37,6 +37,36 @@ async function setFee(sellKey, { bips = null, recipient = null, feeAmount = null
   );
 }
 
+// ---- gas ------------------------------------------------------------------------
+// The Trading API's gasLimit has been observed roughly 4x too low on Robinhood
+// Chain: tx 0x62f3d87e… burned its entire 259 000 limit and reverted, while the
+// same call estimates at ~1.13M. So estimate locally, take the larger of the two
+// and add a buffer. A failing estimate means the swap would revert, which is
+// worth catching here: it costs nothing, where sending it costs the whole limit.
+async function gasFor(publicClient, account, tx) {
+  const call = { account: account.address, to: tx.to, data: tx.data, value: BigInt(tx.value || 0) };
+  const estimated = await publicClient.estimateGas(call);
+  const buffered = (estimated * BigInt(100 + config.GAS_BUFFER_PCT)) / 100n;
+  const fromApi = tx.gasLimit ? BigInt(tx.gasLimit) : 0n;
+  let gas = buffered > fromApi ? buffered : fromApi;
+  if (gas > config.GAS_LIMIT_CAP) gas = config.GAS_LIMIT_CAP;
+  return { gas, estimated, fromApi };
+}
+
+// Refuses to send a transaction the wallet cannot pay for, with a message that
+// says what to do instead of a viem stack trace.
+async function assertFunded(publicClient, address, value, gas) {
+  const [balance, gasPrice] = await Promise.all([
+    publicClient.getBalance({ address }),
+    publicClient.getGasPrice().catch(() => 0n),
+  ]);
+  const needed = value + gas * gasPrice;
+  if (balance < needed) {
+    throw new Error(
+      `insufficient funds: wallet holds ${formatEther(balance)} ETH, this buy needs about ${formatEther(needed)} ETH`
+    );
+  }
+}
 // Returns { status: 'skipped' | 'dry_run' | 'confirmed' | 'failed', hash?, error? }
 async function buy(bot, telegramId, token, sellKey) {
   const user = await wallet.getUser(telegramId);
@@ -91,17 +121,19 @@ async function buy(bot, telegramId, token, sellKey) {
     await setFee(sellKey, { feeAmount: quoted.feeAmount, tokensOut: quoted.userAmount });
     const tx = await uniswap.swap(q);
 
+    const publicClient = alchemy.publicClient();
+    const { gas, estimated, fromApi } = await gasFor(publicClient, account, tx);
+    if (fromApi && estimated > fromApi) {
+      console.warn(`[executor] ${sellKey}: Uniswap gasLimit ${fromApi} below estimate ${estimated}; sending ${gas}`);
+    }
+    await assertFunded(publicClient, account.address, BigInt(tx.value || 0), gas);
+
     const client = alchemy.walletClient(account);
-    const hash = await client.sendTransaction({
-      to: tx.to,
-      value: BigInt(tx.value),
-      data: tx.data,
-      gas: tx.gasLimit ? BigInt(tx.gasLimit) : undefined,
-    });
+    const hash = await client.sendTransaction({ to: tx.to, value: BigInt(tx.value || 0), data: tx.data, gas });
     console.log(`[executor] ${sellKey} sent ${hash}`);
     await setStatus(sellKey, "pending", { hash });
 
-    const receipt = await alchemy.publicClient().waitForTransactionReceipt({ hash, timeout: 120_000 });
+    const receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: 120_000 });
     if (receipt.status !== "success") throw new Error(`Transaction reverted (${hash})`);
 
     // What actually moved beats what was quoted.
@@ -127,4 +159,4 @@ async function buy(bot, telegramId, token, sellKey) {
   }
 }
 
-module.exports = { buy };
+module.exports = { buy, gasFor };
