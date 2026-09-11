@@ -32,9 +32,11 @@ function withLock(key, fn) {
   return next;
 }
 
+// Addressed to the user, not to a chat id: ui.toUser works out which chat that
+// means (a group, for someone who has never opened a private chat).
 async function send(telegramId, text) {
   if (!botRef) return null;
-  return ui.send(botRef, telegramId, text);
+  return ui.toUser(botRef, telegramId, text);
 }
 
 async function tokenLabel(token) {
@@ -127,7 +129,7 @@ async function checkAddress(bot, telegramId, watchedWallet, { blockNumber } = {}
       // trades row owns the outcome, retries included, so a later check must not
       // see the same drop again and announce it twice.
       await setBaseline(watchedWallet.id, token, now);
-      const result = await executor.buy(botRef, telegramId, token, sellKey, { chatId: telegramId });
+      const result = await executor.buy(botRef, telegramId, token, sellKey);
       decisions[decisions.length - 1].buy = result.status;
     }
     return decisions;

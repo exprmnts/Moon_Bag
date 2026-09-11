@@ -89,16 +89,21 @@ async function setFee(sellKey, { bips = null, recipient = null, feeAmount = null
 // Edited in place for the whole life of the buy. Falls back to a new message if
 // the old one is gone, and remembers the new id.
 async function screen(bot, trade, text) {
-  const chatId = trade.chat_id || trade.telegram_id;
-  if (!bot || !chatId) return;
+  if (!bot) return;
+  // trade.chat_id is whatever the chat was when the sell happened; re-resolve it
+  // when the row predates the column, or the user has since moved chats.
+  const chatId = trade.chat_id || (await wallet.getChatId(trade.telegram_id).catch(() => trade.telegram_id));
+  if (!chatId) return;
   if (trade.status_msg_id && (await ui.edit(bot, chatId, trade.status_msg_id, text))) return;
-  const m = await ui.send(bot, chatId, text);
-  if (!m) return;
+  const m = await ui.toUser(bot, trade.telegram_id, text);
+  if (!m) return; // unreachable user: the buy still runs, ui.toUser alerted the team
+  // Record where it actually landed, so every later edit finds the same message.
+  const landed = String((m.chat && m.chat.id) || chatId);
   trade.status_msg_id = m.message_id;
-  trade.chat_id = String(chatId);
+  trade.chat_id = landed;
   await db.query("update trades set chat_id = $2, status_msg_id = $3 where sell_key = $1", [
     trade.sell_key,
-    String(chatId),
+    landed,
     m.message_id,
   ]);
 }

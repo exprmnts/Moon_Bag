@@ -9,6 +9,13 @@ create table if not exists users (
   created_at      timestamptz default now()
 );
 
+-- Where this user actually talks to the bot (2026-09-11). It is NOT the same as
+-- telegram_id: in a group, telegram_id is the person and chat_id is the group,
+-- and a person who has never opened a private chat cannot be messaged by their
+-- user id at all ("Bad Request: chat not found"). Every outbound message uses
+-- this, refreshed on every update the user sends.
+alter table users add column if not exists chat_id text;
+
 create table if not exists watched_wallets (
   id           serial primary key,
   telegram_id  text references users,
@@ -71,10 +78,6 @@ create table if not exists conversations (
   awaiting     text,
   updated_at   timestamptz default now()
 );
--- The question currently on screen, so answering it can delete both the question
--- and the answer and leave only the result (see src/ui.js).
-alter table conversations add column if not exists prompt_chat_id text;
-alter table conversations add column if not exists prompt_msg_id  bigint;
 -- The question currently on screen, so answering it can delete both the question
 -- and the answer and leave only the result (see src/ui.js).
 alter table conversations add column if not exists prompt_chat_id text;

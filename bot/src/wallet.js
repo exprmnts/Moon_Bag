@@ -12,6 +12,7 @@ function rowToUser(row) {
     telegramId: row.telegram_id,
     address: row.address,
     buyAmountWei: BigInt(row.buy_amount_wei),
+    chatId: row.chat_id || null,
     createdAt: row.created_at,
   };
 }
@@ -43,6 +44,40 @@ async function createUserWalletIfMissing(telegramId) {
     [telegramId]
   );
   return { user: rowToUser(row), created: true };
+}
+
+// ---- where to message this user ------------------------------------------------
+// telegram_id identifies the person; chat_id is the conversation. They are the
+// same in a private chat and different in a group, and a person who has only
+// ever used the bot in a group has no private chat to receive anything — so
+// sending to telegram_id fails with "chat not found". Every update refreshes
+// this, and every outbound message reads it.
+const chatCache = new Map(); // telegramId -> chatId, to avoid a write per update
+
+async function rememberChat(telegramId, chatId) {
+  if (chatId == null) return;
+  const value = String(chatId);
+  if (chatCache.get(telegramId) === value) return;
+  chatCache.set(telegramId, value);
+  await db.query("update users set chat_id = $2 where telegram_id = $1 and coalesce(chat_id, '') is distinct from $2", [
+    telegramId,
+    value,
+  ]);
+}
+
+// The chat to send to, falling back to the user id for users who predate this
+// column (correct for everyone who uses the bot in a private chat).
+async function getChatId(telegramId) {
+  const cached = chatCache.get(telegramId);
+  if (cached) return cached;
+  const row = await db.one("select chat_id from users where telegram_id = $1", [telegramId]);
+  const value = (row && row.chat_id) || String(telegramId);
+  chatCache.set(telegramId, value);
+  return value;
+}
+
+function forgetChat(telegramId) {
+  chatCache.delete(telegramId);
 }
 
 // Decrypts the user's key and returns a viem account for signing.
@@ -146,6 +181,9 @@ async function getConversation(telegramId) {
 
 module.exports = {
   getUser,
+  rememberChat,
+  getChatId,
+  forgetChat,
   createUserWalletIfMissing,
   getAccount,
   exportPrivateKey,

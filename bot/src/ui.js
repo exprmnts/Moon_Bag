@@ -69,6 +69,39 @@ async function send(botOrCtx, chatId, text, extra = {}) {
   }
 }
 
+// Telegram's way of saying "there is nowhere to deliver this": the user never
+// opened a private chat, blocked the bot, or was removed from the group.
+const UNREACHABLE = /chat not found|bot was blocked|user is deactivated|bot was kicked|not enough rights/i;
+const unreachable = (err) => UNREACHABLE.test(String((err && err.message) || err));
+
+// Sends to a *user*, resolving which chat that means. Prefer this over send()
+// for anything the watcher or the executor generates: telegram_id is only a
+// valid chat id for people who have a private chat with the bot.
+async function toUser(botOrCtx, telegramId, text, extra = {}) {
+  const wallet = require("./wallet"); // required here: wallet.js must not depend on ui.js
+  const chatId = await wallet.getChatId(telegramId).catch(() => String(telegramId));
+  try {
+    return await api(botOrCtx).sendMessage(chatId, text, html(extra));
+  } catch (err) {
+    if (unreachable(err)) {
+      // Worth a developer's attention: this user's moonbags are working but
+      // they are hearing nothing about them.
+      require("./services/alerts")
+        .notifyDev("A user cannot be messaged", {
+          telegramId,
+          chatId,
+          error: err.message,
+          impact: "their buys still run and still cost them ETH; they just hear nothing about it",
+          fix: "that user taps any button in the chat they want alerts in — or pause their watcher",
+        }, { key: `unreachable:${telegramId}` })
+        .catch(() => {});
+    } else {
+      console.error(`[ui] send to ${telegramId} (chat ${chatId}) failed: ${err.message}`);
+    }
+    return null;
+  }
+}
+
 async function edit(botOrCtx, chatId, messageId, text, extra = {}) {
   try {
     await api(botOrCtx).editMessageText(chatId, messageId, undefined, text, html(extra));
@@ -121,4 +154,4 @@ async function ack(ctx, text) {
   try { await ctx.answerCbQuery(text); } catch { /* stale tap */ }
 }
 
-module.exports = { esc, html, menu, backOnly, banner, send, edit, del, delLater, temp, screen, ack, api, RULE };
+module.exports = { esc, html, menu, backOnly, banner, send, toUser, unreachable, edit, del, delLater, temp, screen, ack, api, RULE };

@@ -26,7 +26,13 @@ const FEE_PCT = fee.pct(config.FEE_BIPS); // "1%"
 
 const esc = ui.esc;
 const uid = (ctx) => String(ctx.from.id);
-const isAdmin = (ctx) => Boolean(config.adminChatId) && String(ctx.from.id) === String(config.adminChatId);
+const isPrivate = (ctx) => !ctx.chat || ctx.chat.type === "private";
+// ADMIN_CHAT_ID is a destination, not a person: it may be a group. So "admin"
+// means the request came from that chat — anyone in the dev group qualifies —
+// or, when it is a user id, from that user.
+const isAdmin = (ctx) =>
+  Boolean(config.adminChatId) &&
+  [ctx.chat && ctx.chat.id, ctx.from && ctx.from.id].some((id) => id != null && String(id) === String(config.adminChatId));
 
 // ---- copy ---------------------------------------------------------------------
 const WELCOME =
@@ -62,6 +68,20 @@ const NEED_WALLET = "🪙 <b>You need a wallet first</b>\n\nTap <b>Create my wal
 
 const FUND_HINT =
   "Send ETH on Robinhood Chain to this address — bridge from Ethereum, Arbitrum or Base (portal.arbitrum.io, Relay), or send from Robinhood Wallet.";
+
+// Remember which chat each person uses the bot from, before anything else runs.
+// In a private chat this is their user id; in a group it is the group's. Alerts
+// from the watcher go here, and for someone who has only ever used the bot in a
+// group it is the *only* address that works — their user id answers "chat not
+// found". Cached in wallet.js, so this writes only when it changes.
+bot.use(async (ctx, next) => {
+  try {
+    if (ctx.from && !ctx.from.is_bot && ctx.chat) await wallet.rememberChat(String(ctx.from.id), ctx.chat.id);
+  } catch (err) {
+    console.error(`[bot] rememberChat: ${err.message}`);
+  }
+  return next();
+});
 
 // ---- state and screens ------------------------------------------------------------
 // One read of everything a screen needs to draw itself.
@@ -111,8 +131,14 @@ async function ask(ctx, key, text, placeholder) {
   const telegramId = uid(ctx);
   const prev = await wallet.getConversation(telegramId);
   if (prev && prev.promptMsgId) await ui.del(ctx, prev.promptChatId || ctx.chat.id, prev.promptMsgId);
-  const m = await ui.send(ctx, ctx.chat.id, text, {
-    reply_markup: { force_reply: true, input_field_placeholder: placeholder },
+  // In a group the question is addressed to one person: `selective` only targets
+  // someone the message mentions, so the mention is what makes it work — without
+  // it Telegram would pop the reply box for everyone in the room.
+  const group = ctx.chat && ctx.chat.type !== "private";
+  const mention = group ? `<a href="tg://user?id=${ctx.from.id}">${esc(ctx.from.first_name || "you")}</a> — ` : "";
+  const hint = group ? "\n\n<i>Reply to this message.</i>" : "";
+  const m = await ui.send(ctx, ctx.chat.id, `${mention}${text}${hint}`, {
+    reply_markup: { force_reply: true, input_field_placeholder: placeholder, selective: group },
   });
   await wallet.setAwaiting(telegramId, key, { chatId: ctx.chat.id, msgId: m && m.message_id });
 }
@@ -249,6 +275,14 @@ action("EXPORT_KEY", async (ctx) => {
   await ui.ack(ctx);
   const state = await stateOf(uid(ctx));
   if (!state.hasWallet) return ui.screen(ctx, NEED_WALLET, state);
+  // A private key in a group chat is a key everyone in the group owns.
+  if (!isPrivate(ctx)) {
+    return ui.screen(
+      ctx,
+      "🔑 <b>Not here</b>\n\nThis is a group — anyone in it would see your private key. Message me privately and tap <b>Export key</b> there.",
+      state
+    );
+  }
   await ui.screen(
     ctx,
     `🔑 <b>Export private key</b>\n\nAnyone holding this key owns everything in your bot wallet. Only do this on a device you trust, and never paste it anywhere.\n\n<i>The key will delete itself from this chat after ${config.KEY_TTL_MS / 1000} seconds.</i>`,
@@ -261,6 +295,9 @@ action("CONFIRM_EXPORT", async (ctx) => {
   await ui.ack(ctx);
   const state = await stateOf(uid(ctx));
   if (!state.hasWallet) return ui.screen(ctx, NEED_WALLET, state);
+  // Checked again here: the warning screen and the tap are separate updates, and
+  // only this one actually reveals the key.
+  if (!isPrivate(ctx)) return ui.screen(ctx, "🔑 <b>Not here</b>\n\nMessage me privately to export your key.", state);
   const key = await wallet.exportPrivateKey(uid(ctx));
   const seconds = Math.round(config.KEY_TTL_MS / 1000);
   const m = await ui.send(
