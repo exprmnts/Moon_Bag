@@ -77,6 +77,11 @@ const config = {
   POLL_MS: 60_000,
   EVENT_DEBOUNCE_MS: 2_000,
   HIGH_BUY_WARN_ETH: 1,
+
+  // How long the Uniswap Trading API gets, and how many times one call retries
+  // its own transient failures before the attempt is counted as failed.
+  UNISWAP_TIMEOUT_MS: 20_000,
+  UNISWAP_RETRIES: 2,
 };
 
 module.exports = config;
