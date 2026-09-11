@@ -52,32 +52,64 @@ async function createUserWalletIfMissing(telegramId) {
 // ever used the bot in a group has no private chat to receive anything — so
 // sending to telegram_id fails with "chat not found". Every update refreshes
 // this, and every outbound message reads it.
-const chatCache = new Map(); // telegramId -> chatId, to avoid a write per update
+//
+// A route also carries whether Telegram has already refused delivery. That
+// refusal is permanent until the user comes back, so it is remembered: without
+// it, one sell produced four failed sends and four alert lines for a user who
+// was never going to receive any of them.
+const routes = new Map(); // telegramId -> { chatId, blocked }
 
-async function rememberChat(telegramId, chatId) {
-  if (chatId == null) return;
-  const value = String(chatId);
-  if (chatCache.get(telegramId) === value) return;
-  chatCache.set(telegramId, value);
-  await db.query("update users set chat_id = $2 where telegram_id = $1 and coalesce(chat_id, '') is distinct from $2", [
-    telegramId,
-    value,
-  ]);
+async function routeFor(telegramId) {
+  const cached = routes.get(telegramId);
+  if (cached) return cached;
+  const row = await db.one("select chat_id, unreachable_at from users where telegram_id = $1", [telegramId]);
+  // The fallback is right for everyone who uses the bot in a private chat,
+  // including users who predate the column.
+  const route = { chatId: (row && row.chat_id) || String(telegramId), blocked: Boolean(row && row.unreachable_at) };
+  routes.set(telegramId, route);
+  return route;
 }
 
-// The chat to send to, falling back to the user id for users who predate this
-// column (correct for everyone who uses the bot in a private chat).
+// Called for every update, before anything else. Returns true when this update
+// is what made a previously unreachable user reachable again — the one moment
+// worth a log line.
+async function rememberChat(telegramId, chatId) {
+  if (chatId == null) return false;
+  const value = String(chatId);
+  const known = routes.get(telegramId);
+  if (known && known.chatId === value && !known.blocked) return false;
+  const recovered = Boolean(known && known.blocked);
+  routes.set(telegramId, { chatId: value, blocked: false });
+  // Hearing from someone is proof they can be reached, so the same write clears
+  // the block. Conditional, so the common case costs nothing.
+  await db.query(
+    `update users set chat_id = $2, unreachable_at = null, unreachable_reason = null
+     where telegram_id = $1 and (coalesce(chat_id, '') is distinct from $2 or unreachable_at is not null)`,
+    [telegramId, value]
+  );
+  return recovered;
+}
+
 async function getChatId(telegramId) {
-  const cached = chatCache.get(telegramId);
-  if (cached) return cached;
-  const row = await db.one("select chat_id from users where telegram_id = $1", [telegramId]);
-  const value = (row && row.chat_id) || String(telegramId);
-  chatCache.set(telegramId, value);
-  return value;
+  return (await routeFor(telegramId)).chatId;
+}
+
+// Records that Telegram will not deliver to this user. Returns true only the
+// first time, which is what keeps the alert from repeating: the condition is
+// stored, so a restart does not re-announce it either.
+async function markUnreachable(telegramId, reason) {
+  const route = routes.get(telegramId);
+  if (route) route.blocked = true;
+  const row = await db.one(
+    `update users set unreachable_at = now(), unreachable_reason = $2
+     where telegram_id = $1 and unreachable_at is null returning telegram_id`,
+    [telegramId, String(reason || "").slice(0, 200)]
+  );
+  return Boolean(row);
 }
 
 function forgetChat(telegramId) {
-  chatCache.delete(telegramId);
+  routes.delete(telegramId);
 }
 
 // Decrypts the user's key and returns a viem account for signing.
@@ -182,7 +214,9 @@ async function getConversation(telegramId) {
 module.exports = {
   getUser,
   rememberChat,
+  routeFor,
   getChatId,
+  markUnreachable,
   forgetChat,
   createUserWalletIfMissing,
   getAccount,

@@ -97,9 +97,14 @@ async function setFee(sellKey, { bips = null, recipient = null, feeAmount = null
 // the old one is gone, and remembers the new id.
 async function screen(bot, trade, text) {
   if (!bot) return;
+  const route = await wallet.routeFor(trade.telegram_id).catch(() => null);
+  // A muted user hears nothing until they come back; the buy itself carries on.
+  // ui.toUser would reach the same conclusion — deciding it here also skips the
+  // pointless edit of a message they never received.
+  if (route && route.blocked) return;
   // trade.chat_id is whatever the chat was when the sell happened; re-resolve it
   // when the row predates the column, or the user has since moved chats.
-  const chatId = trade.chat_id || (await wallet.getChatId(trade.telegram_id).catch(() => trade.telegram_id));
+  const chatId = trade.chat_id || (route ? route.chatId : trade.telegram_id);
   if (!chatId) return;
   if (trade.status_msg_id && (await ui.edit(bot, chatId, trade.status_msg_id, text))) return;
   const m = await ui.toUser(bot, trade.telegram_id, text);

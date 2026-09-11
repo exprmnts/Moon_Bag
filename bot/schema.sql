@@ -16,6 +16,15 @@ create table if not exists users (
 -- this, refreshed on every update the user sends.
 alter table users add column if not exists chat_id text;
 
+-- Telegram has refused to deliver to this user (2026-09-11). Someone who has
+-- never opened a private chat with the bot answers "chat not found" — or
+-- "can't initiate conversation with a user" — for every message, forever. That
+-- is a state, not an error: it is recorded on the first refusal, every later
+-- message for them is skipped without an API call, and any update they send
+-- clears it. Their buys still run while it is set; they just hear nothing.
+alter table users add column if not exists unreachable_at     timestamptz;
+alter table users add column if not exists unreachable_reason text;
+
 create table if not exists watched_wallets (
   id           serial primary key,
   telegram_id  text references users,

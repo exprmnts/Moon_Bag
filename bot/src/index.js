@@ -78,7 +78,11 @@ const FUND_HINT =
 // found". Cached in wallet.js, so this writes only when it changes.
 bot.use(async (ctx, next) => {
   try {
-    if (ctx.from && !ctx.from.is_bot && ctx.chat) await wallet.rememberChat(String(ctx.from.id), ctx.chat.id);
+    if (ctx.from && !ctx.from.is_bot && ctx.chat) {
+      // True only when this update un-muted someone the bot had given up on.
+      const recovered = await wallet.rememberChat(String(ctx.from.id), ctx.chat.id);
+      if (recovered) log.info(`${ctx.from.id} can be messaged again (chat ${ctx.chat.id})`);
+    }
   } catch (err) {
     log.error(`rememberChat: ${err.message}`);
   }

@@ -15,6 +15,7 @@
 // handler.
 const { Markup } = require("telegraf");
 const config = require("./config");
+const alerts = require("./services/alerts");
 const log = require("./log").scope("ui");
 
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -71,36 +72,51 @@ async function send(botOrCtx, chatId, text, extra = {}) {
 }
 
 // Telegram's way of saying "there is nowhere to deliver this": the user never
-// opened a private chat, blocked the bot, or was removed from the group.
-const UNREACHABLE = /chat not found|bot was blocked|user is deactivated|bot was kicked|not enough rights/i;
+// opened a private chat with the bot (so it may not write first), blocked it,
+// deleted their account, or removed it from the group.
+const UNREACHABLE =
+  /chat not found|bot can.t initiate conversation|bot was blocked|user is deactivated|bot was kicked|not enough rights|chat_id is empty|peer_id_invalid/i;
 const unreachable = (err) => UNREACHABLE.test(String((err && err.message) || err));
 
 // Sends to a *user*, resolving which chat that means. Prefer this over send()
 // for anything the watcher or the executor generates: telegram_id is only a
 // valid chat id for people who have a private chat with the bot.
+//
+// Silent for a user Telegram has already refused: the refusal stands until they
+// come back, so repeating it would be one wasted API call and one log line per
+// message, forever. Their buys still run; wallet.rememberChat un-mutes them the
+// moment they send anything.
 async function toUser(botOrCtx, telegramId, text, extra = {}) {
   const wallet = require("./wallet"); // required here: wallet.js must not depend on ui.js
-  const chatId = await wallet.getChatId(telegramId).catch(() => String(telegramId));
+  const route = await wallet.routeFor(telegramId).catch(() => ({ chatId: String(telegramId), blocked: false }));
+  if (route.blocked) return null;
   try {
-    return await api(botOrCtx).sendMessage(chatId, text, html(extra));
+    return await api(botOrCtx).sendMessage(route.chatId, text, html(extra));
   } catch (err) {
-    if (unreachable(err)) {
-      // Worth a developer's attention: this user's moonbags are working but
-      // they are hearing nothing about them.
-      require("./services/alerts")
-        .notifyDev("A user cannot be messaged", {
-          telegramId,
-          chatId,
-          error: err.message,
-          impact: "their buys still run and still cost them ETH; they just hear nothing about it",
-          fix: "that user taps any button in the chat they want alerts in — or pause their watcher",
-        }, { key: `unreachable:${telegramId}` })
-        .catch(() => {});
-    } else {
-      log.error(`send to ${telegramId} (chat ${chatId}) failed: ${err.message}`);
-    }
+    if (unreachable(err)) await mute(telegramId, route, err);
+    else log.error(`send to ${telegramId} (chat ${route.chatId}) failed: ${err.message}`);
     return null;
   }
+}
+
+// Records the refusal and tells the team once. Nothing here may throw: a buy
+// must not fail because the message about it could not be delivered.
+async function mute(telegramId, route, err) {
+  const wallet = require("./wallet");
+  const first = await wallet.markUnreachable(telegramId, err.message).catch(() => false);
+  route.blocked = true;
+  if (!first) return; // already known and already reported
+  log.warn(`${telegramId} (chat ${route.chatId}) cannot be messaged: ${err.message} — muted until they write`);
+  await alerts
+    .notifyDev("A user cannot be messaged", {
+      telegramId,
+      chatId: route.chatId,
+      error: err.message,
+      impact: "their buys still run and still cost them ETH; they just hear nothing about it",
+      fix: "that user sends anything to the bot in the chat they want alerts in — or pauses their watcher",
+      note: "muted until then, so this will not repeat",
+    }, { key: `unreachable:${telegramId}` })
+    .catch(() => {});
 }
 
 async function edit(botOrCtx, chatId, messageId, text, extra = {}) {
