@@ -78,6 +78,16 @@ const config = {
   EVENT_DEBOUNCE_MS: 2_000,
   HIGH_BUY_WARN_ETH: 1,
 
+  // Retries. A buy that fails for a transient reason (Uniswap's router timing
+  // out, a price that moved, an RPC hiccup) is attempted at most this many times
+  // in total; the delay before attempt N+1 is RETRY_BACKOFF_MS[N-1], last value
+  // reused. The worker wakes every RETRY_TICK_MS and runs whatever is due.
+  MAX_BUY_ATTEMPTS: 5,
+  RETRY_BACKOFF_MS: [5_000, 15_000, 45_000, 120_000],
+  RETRY_TICK_MS: 10_000,
+  // A trade left 'pending' by a crash is re-queued once it is this old.
+  STRANDED_AFTER_MS: 5 * 60_000,
+
   // How long the Uniswap Trading API gets, and how many times one call retries
   // its own transient failures before the attempt is counted as failed.
   UNISWAP_TIMEOUT_MS: 20_000,
