@@ -61,6 +61,8 @@ Four rules, all enforced here rather than in the handlers:
 - **A tap edits the message it was on.** `ui.screen` edits the tapped message instead of sending a new menu, so the chat does not grow a wall of keyboards. It falls back to a new message when the old one cannot be edited.
 - **A question is a force-reply, and it cleans up after itself.** `ask()` deletes any question already open and sends the new one with `force_reply` plus a placeholder, so Telegram puts the user straight in the reply box. Answering deletes both the question and the answer (`closeQuestion`), leaving only the result. A rejected answer is deleted and the question comes back carrying the reason, so exactly one question is ever on screen.
 - **Temporary things delete themselves.** `ui.temp` for confirmations and errors; the private key after `KEY_TTL_MS` (60 s), announced in the message that carries it.
+- **The control panel stays at the bottom.** The panel is one message edited in place, which works until a notification is sent underneath it and strands the buttons up the scrollback. So its message id is stored (`users.menu_chat_id` / `menu_msg_id`), and `ui.bump` schedules `ui.moveMenu`: after `MENU_BUMP_MS` (4 s) of quiet the panel is re-sent at the bottom and the old copy deleted. It is debounced, so a burst of notifications moves it once; it is skipped when the panel is already the last thing the bot sent, and while a question is open, because that question owns the reply box. `index.js` supplies the drawing via `ui.onMenu` — `ui.js` knows nothing about dashboards.
+- **A state is stated once.** `dashboard()` prints the banner, so a note that repeats it prints the same sentence twice. The toggle passes no note; the banner flipping from `⚪️` to `🟢` is the confirmation.
 
 Every handler is wrapped in `guard(name, fn)`: nothing thrown reaches Telegraf, the user gets one short line, and the developers get the stack through `alerts`.
 
@@ -118,7 +120,7 @@ Before this, one sell produced four failed sends and four alert lines for a user
 
 | Table | Row is | Notes |
 | --- | --- | --- |
-| `users` | one Telegram user | `address` is the bot wallet; `key_iv/key_ct/key_tag` the AES-GCM parts; `buy_amount_wei` numeric; `chat_id` is where to message them; `unreachable_at` + `unreachable_reason` mute a user Telegram refuses to deliver to (§2c) |
+| `users` | one Telegram user | `address` is the bot wallet; `key_iv/key_ct/key_tag` the AES-GCM parts; `buy_amount_wei` numeric; `chat_id` is where to message them; `unreachable_at` + `unreachable_reason` mute a user Telegram refuses to deliver to (§2c); `menu_chat_id` + `menu_msg_id` are the control panel's current message |
 | `watched_wallets` | one (user, address) pair | addresses stored lowercase; unique per user |
 | `positions` | one (watched wallet, token) baseline | `baseline_amount` raw units as numeric; cascades on wallet delete |
 | `watcher_state` | one per user | `enabled` is the source of truth for resume-on-boot; `last_poll_at` |
@@ -186,7 +188,7 @@ await bot.handleUpdate({ update_id: 2, message: { message_id: 2, from, chat, dat
 | What counts as "cannot be messaged" | `ui.UNREACHABLE`, and `wallet.markUnreachable` / `wallet.rememberChat` for the two ends of it |
 | The fee rate, or turning the fee off | `config.FEE_BIPS` and `TREASURY_ADDRESS`; the logic is `fee.js` and `test/fee.test.js` |
 | A new button | `ui.menu()` and an `action(...)` in `index.js`; typed input goes through `ask()` and `conversations.awaiting` |
-| How a screen looks, or what deletes itself | `ui.js` |
+| How a screen looks, what deletes itself, where the panel sits | `ui.js`; `config.MENU_BUMP_MS` for how long the chat must be quiet first |
 | Message wording | the handler or `watcher.js` / `executor.js` where it is sent; HTML parse mode, escape user-controlled text with `ui.esc()` |
 | A new table or column | `schema.sql` with `if not exists`; there is no migration tool |
 | Another chain | `config.js` only, but use a separate database per chain (`tokens` is keyed by address only) |
