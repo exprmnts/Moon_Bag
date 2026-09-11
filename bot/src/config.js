@@ -92,6 +92,11 @@ const config = {
   // A trade left 'pending' by a crash is re-queued once it is this old.
   STRANDED_AFTER_MS: 5 * 60_000,
 
+  // Message lifetimes, in ms. The private key is deleted from the chat after a
+  // minute; short-lived confirmations go after EPHEMERAL.
+  KEY_TTL_MS: 60_000,
+  EPHEMERAL_TTL_MS: 30_000,
+
   // How long the Uniswap Trading API gets, and how many times one call retries
   // its own transient failures before the attempt is counted as failed.
   UNISWAP_TIMEOUT_MS: 20_000,
