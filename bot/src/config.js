@@ -44,8 +44,10 @@ const config = {
   isMainnet: IS_MAINNET,
   chain,
   chainId: chain.id,
-  rpcUrl: `https://${ALCHEMY_NETWORK}.g.alchemy.com/v2/${ALCHEMY_API_KEY}`,
-  wssUrl: `wss://${ALCHEMY_NETWORK}.g.alchemy.com/v2/${ALCHEMY_API_KEY}`,
+  // RPC_URL / WSS_URL override Alchemy. Only for pointing a test run at a local
+  // fork (anvil); production leaves both unset.
+  rpcUrl: process.env.RPC_URL || `https://${ALCHEMY_NETWORK}.g.alchemy.com/v2/${ALCHEMY_API_KEY}`,
+  wssUrl: process.env.WSS_URL || `wss://${ALCHEMY_NETWORK}.g.alchemy.com/v2/${ALCHEMY_API_KEY}`,
   explorerTx: IS_MAINNET
     ? "https://robinhoodchain.blockscout.com/tx/"
     : "https://explorer.testnet.chain.robinhood.com/tx/",
