@@ -71,3 +71,11 @@ create table if not exists conversations (
   awaiting     text,
   updated_at   timestamptz default now()
 );
+-- The question currently on screen, so answering it can delete both the question
+-- and the answer and leave only the result (see src/ui.js).
+alter table conversations add column if not exists prompt_chat_id text;
+alter table conversations add column if not exists prompt_msg_id  bigint;
+-- The question currently on screen, so answering it can delete both the question
+-- and the answer and leave only the result (see src/ui.js).
+alter table conversations add column if not exists prompt_chat_id text;
+alter table conversations add column if not exists prompt_msg_id  bigint;

@@ -117,18 +117,31 @@ async function isWatcherEnabled(telegramId) {
   return Boolean(row && row.enabled);
 }
 
-// Conversation slot: a user can only be awaiting one thing at a time.
-async function setAwaiting(telegramId, awaiting) {
+// Conversation slot: a user can only be awaiting one thing at a time. The
+// prompt's chat and message id ride along so answering it can delete the
+// question (see ui.ask / ui.closePrompt in index.js).
+async function setAwaiting(telegramId, awaiting, { chatId = null, msgId = null } = {}) {
   await db.query(
-    `insert into conversations (telegram_id, awaiting) values ($1, $2)
-     on conflict (telegram_id) do update set awaiting = excluded.awaiting, updated_at = now()`,
-    [telegramId, awaiting]
+    `insert into conversations (telegram_id, awaiting, prompt_chat_id, prompt_msg_id) values ($1, $2, $3, $4)
+     on conflict (telegram_id) do update set awaiting = excluded.awaiting,
+       prompt_chat_id = excluded.prompt_chat_id, prompt_msg_id = excluded.prompt_msg_id, updated_at = now()`,
+    [telegramId, awaiting, chatId == null ? null : String(chatId), msgId == null ? null : Number(msgId)]
   );
 }
 
 async function getAwaiting(telegramId) {
-  const row = await db.one("select awaiting from conversations where telegram_id = $1", [telegramId]);
+  const row = await getConversation(telegramId);
   return row ? row.awaiting : null;
+}
+
+// { awaiting, promptChatId, promptMsgId } or null.
+async function getConversation(telegramId) {
+  const row = await db.one(
+    "select awaiting, prompt_chat_id, prompt_msg_id from conversations where telegram_id = $1",
+    [telegramId]
+  );
+  if (!row) return null;
+  return { awaiting: row.awaiting, promptChatId: row.prompt_chat_id, promptMsgId: row.prompt_msg_id };
 }
 
 module.exports = {
@@ -145,4 +158,5 @@ module.exports = {
   isWatcherEnabled,
   setAwaiting,
   getAwaiting,
+  getConversation,
 };
