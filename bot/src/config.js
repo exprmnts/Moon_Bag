@@ -70,6 +70,10 @@ const config = {
   FEE_BIPS, // basis points of the tokens bought, 100 = 1%; Uniswap allows at most 500
   feeEnabled: Boolean(treasury) && FEE_BIPS > 0,
 
+  // Where failures that need a human go. A Telegram chat id (a user id, or a
+  // group id starting with -100). Unset means console only.
+  adminChatId: (process.env.ADMIN_CHAT_ID || "").trim(),
+
   DEFAULT_BUY_ETH: "0.005",
   DEFAULT_BUY_WEI: parseEther("0.005"),
   SELL_THRESHOLD: 0.05, // a ≥5% drop from baseline is a sell
