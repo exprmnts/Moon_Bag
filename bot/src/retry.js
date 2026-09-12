@@ -49,6 +49,23 @@ function start(bot) {
   alerts.use(bot);
   // Buys interrupted by a restart go back in the queue before the first tick.
   executor.reclaimStranded().catch((err) => alerts.swallow("retry.reclaimStranded", err));
+  // So does anything that failed on our own misconfiguration: this restart may
+  // be the fix, and nobody should have to type `/retry` to recover from an
+  // outage they did not cause. Silent when there is nothing waiting.
+  executor
+    .requeueOperatorFixable()
+    .then((n) => {
+      // notifyDev does the logging; this only speaks when it actually recovered
+      // something, so a normal restart stays as quiet as it was before.
+      if (n) {
+        return alerts.notifyDev(
+          "Re-queued buys that failed on a bad config",
+          { buys: n, window: config.BOOT_REQUEUE_WINDOW },
+          { key: "boot-requeue" }
+        );
+      }
+    })
+    .catch((err) => alerts.swallow("retry.requeueOperatorFixable", err));
   if (timer) return;
   timer = setInterval(() => { tick().catch(() => {}); }, config.RETRY_TICK_MS);
   if (timer.unref) timer.unref();

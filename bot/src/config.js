@@ -101,6 +101,11 @@ const config = {
   RETRY_TICK_MS: 10_000,
   // A trade left 'pending' by a crash is re-queued once it is this old.
   STRANDED_AFTER_MS: 5 * 60_000,
+  // How far back a boot reaches when it re-queues buys that failed on our own
+  // misconfiguration. Short on purpose: the buy fires at today's price without
+  // anyone confirming it, so a signal older than this stays behind `/retry`,
+  // where the user is shown the ETH first. A Postgres interval.
+  BOOT_REQUEUE_WINDOW: "1 hour",
 
   // Message lifetimes, in ms. The private key is deleted from the chat after a
   // minute; short-lived confirmations go after EPHEMERAL.

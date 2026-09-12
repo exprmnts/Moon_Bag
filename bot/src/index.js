@@ -208,7 +208,18 @@ const retryScope = (ctx, all) => (all ? {} : { telegramId: uid(ctx) });
 bot.command(
   "retry",
   guard("/retry", async (ctx) => {
-    const all = isAdmin(ctx) && /\ball\b/i.test(ctx.message.text || "");
+    // ADMIN_CHAT_ID is normally a group, and a user id is never negative, so
+    // `ctx.from.id` cannot match it: an admin typing `/retry all` in a DM is not
+    // an admin here. Quietly narrowing to their own buys would show a tidy
+    // confirmation that looks like the whole outage had been cleared, so say it.
+    const askedAll = /\ball\b/i.test(ctx.message.text || "");
+    const all = askedAll && isAdmin(ctx);
+    if (askedAll && !all) {
+      return sendMain(
+        ctx,
+        "⛔️ <b>/retry all</b> only works in the team chat. Send <b>/retry</b> to retry your own buys."
+      );
+    }
     const { count, ethWei, tokens } = await executor.countFailed(retryScope(ctx, all));
     if (!count) return sendMain(ctx, "✅ Nothing is waiting to be retried.");
     await ui.send(

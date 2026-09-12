@@ -40,6 +40,14 @@ const CODES = {
 // re-checks the hash first (see executor.resumeSentTx).
 const KEEPS_HASH = new Set(["RECEIPT_TIMEOUT", "REVERTED"]);
 
+// Failures that no amount of waiting fixes: the environment is wrong, and only
+// an operator changing it and restarting the process makes the next attempt
+// different. That restart is the signal retry.js watches for — see
+// executor.requeueOperatorFixable. Every one of these fails before any ETH
+// moves, so re-running them while still broken costs a log line and nothing
+// else.
+const OPERATOR_FIXABLE = ["CONFIG", "NOT_MAINNET", "KEY_MISMATCH"];
+
 function messageOf(err) {
   if (!err) return "";
   return String(err.shortMessage || err.details || err.message || err);
@@ -70,6 +78,12 @@ function codeFor(err) {
 
   const status = uniswapStatus(text);
   if (status === 429) return "RATE_LIMITED";
+  // The API rejected our key, not our request. Deterministic: the fifth attempt
+  // is refused exactly like the first, and only an operator fixing
+  // UNISWAP_API_KEY changes that. Seen in production on 2026-09-12, where a
+  // stale key read back as "the router did not answer in time" and burned five
+  // retries per buy before anyone was told.
+  if (status === 401 || status === 403) return "CONFIG";
   if (status != null) {
     // A 404 is Uniswap's answer both to "the router timed out" (retry works,
     // the body says so) and to "this token has no pool" (retrying cannot help).
@@ -130,4 +144,4 @@ function backoffMs(attempts, table = config.RETRY_BACKOFF_MS) {
 
 const canRetry = (attempts, max = config.MAX_BUY_ATTEMPTS) => attempts < max;
 
-module.exports = { classify, tagged, backoffMs, canRetry, messageOf, CODES, KEEPS_HASH };
+module.exports = { classify, tagged, backoffMs, canRetry, messageOf, CODES, KEEPS_HASH, OPERATOR_FIXABLE };

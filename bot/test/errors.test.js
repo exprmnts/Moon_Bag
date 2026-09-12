@@ -59,6 +59,26 @@ test("rate limiting is retryable", () => {
   assert.equal(classify(new Error("Uniswap /quote 429: Too many requests")).code, "RATE_LIMITED");
 });
 
+test("a rejected api key is a config error, not a slow router", () => {
+  const c = classify(new Error("Uniswap /quote 401: Unauthenticated api key or session"));
+  assert.equal(c.code, "CONFIG");
+  assert.equal(c.retryable, false);
+  assert.equal(c.alert, true);
+  assert.equal(classify(new Error("Uniswap /swap 403: Forbidden")).code, "CONFIG");
+});
+
+test("the operator-fixable codes are exactly the ones no retry can fix", () => {
+  const { OPERATOR_FIXABLE, CODES } = require("../src/errors");
+  for (const code of OPERATOR_FIXABLE) {
+    assert.ok(CODES[code], `${code} is not a real code`);
+    assert.equal(CODES[code].retryable, false, `${code} would be retried anyway`);
+    assert.equal(CODES[code].alert, true, `${code} would requeue silently`);
+  }
+  // The whole point of the boot requeue: a stale key lands here, not in the
+  // retry queue that burns five attempts on it.
+  assert.ok(OPERATOR_FIXABLE.includes(classify(new Error("Uniswap /quote 401: nope")).code));
+});
+
 test("a server error is retryable", () => {
   assert.equal(classify(new Error("Uniswap /swap 503: upstream unavailable")).code, "QUOTE_UNAVAILABLE");
 });

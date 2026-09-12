@@ -423,4 +423,14 @@ async function requeueFailed(opts = {}) {
   return rowCount;
 }
 
-module.exports = { buy, attempt, due, reclaimStranded, requeueFailed, countFailed, queue, claim, getTrade, gasFor };
+// The automatic half of "we fixed it, try them all again". A restart is the only
+// event that can change a CONFIG / KEY_MISMATCH / NOT_MAINNET outcome, so boot
+// re-queues the recent ones itself rather than waiting for every affected user
+// to discover `/retry`. Deliberately narrow: only those codes, only the last
+// BOOT_REQUEUE_WINDOW, because these fire without anyone confirming the spend.
+// Returns how many rows were re-queued.
+async function requeueOperatorFixable() {
+  return requeueFailed({ codes: errors.OPERATOR_FIXABLE, since: config.BOOT_REQUEUE_WINDOW });
+}
+
+module.exports = { buy, attempt, due, reclaimStranded, requeueFailed, requeueOperatorFixable, countFailed, queue, claim, getTrade, gasFor };
